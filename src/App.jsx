@@ -4,6 +4,7 @@ import { db } from './db/database';
 import { scanWholeQuran } from './utils/scanner'; 
 import { cleanQuranText, isArabicLetter, isDiacritic, classifyYaaOrMaqsura, isIgnoredChar } from './utils/textProcessor';
 import Plot from 'react-plotly.js';
+import { Analytics } from '@vercel/analytics/react';
 
 const nonConnectingLeftChars = ['ا', 'أ', 'إ', 'آ', 'ٱ', 'د', 'ذ', 'ر', 'ز', 'و', 'ؤ', 'ة', 'ء'];
 
@@ -2515,6 +2516,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <MainApp />
+      <Analytics />
     </ErrorBoundary>
   );
 }
