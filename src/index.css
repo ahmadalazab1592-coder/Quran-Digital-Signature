@@ -1,0 +1,24 @@
+/* تعريف خط أميري المخصص للقرآن */
+@font-face {
+  font-family: 'Amiri Quran';
+  src: url('/fonts/AmiriQuran.ttf') format('truetype'); 
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* تعريف خط أسما بطرس المخصص لواجهة التطبيق */
+@font-face {
+  font-family: 'Asmaa Boutros';
+  src: url('/fonts/AsmaaBoutros.ttf') format('truetype'); 
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* تنسيقات عامة لتنظيف حواف الصفحة */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #f4f6f8;
+}
