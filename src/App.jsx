@@ -1296,10 +1296,47 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
     });
   };
 
+// 🟢 1. شاشة تحميل النص القرآني (الابتدائية)
   if (quranData.length === 0) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px', fontFamily: 'Arial', fontSize: '24px', direction: 'rtl' }}>
-        جاري تحميل النص القرآني وإعداد قاعدة البيانات...
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'Arial, sans-serif', fontSize: '24px', direction: 'rtl', backgroundColor: '#f4f6f8', color: '#2c3e50' }}>
+        ⏳ جاري تحميل النص القرآني وإعداد قاعدة البيانات...
+      </div>
+    );
+  }
+
+  // 🟢 2. شاشة الترحيب والإعداد (تظهر إجبارياً للزوار الجدد فقط)
+  if (globalFingerprints.length === 0 && !isScanning) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'Arial, sans-serif', direction: 'rtl', backgroundColor: '#f4f6f8', padding: '20px' }}>
+         <div style={{ background: '#fff', padding: '50px', borderRadius: '15px', boxShadow: '0 10px 40px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: '650px', borderTop: '5px solid #3498db' }}>
+            <div style={{ fontSize: '60px', marginBottom: '20px' }}>🕋</div>
+            <h1 style={{ color: '#2c3e50', marginBottom: '15px' }}>منصة البصمة الرقمية للقرآن</h1>
+            <p style={{ fontSize: '18px', color: '#7f8c8d', lineHeight: '1.8', marginBottom: '35px' }}>
+              أهلاً بك! لكي يعمل التطبيق بكامل وظائفه (كالنقر والمطابقة)، نحتاج أولاً إلى إجراء <b>مسح أولي شامل</b> للنص القرآني لبناء قاعدة البيانات محلياً على جهازك.
+              <br/><br/>
+              <span style={{ color: '#e74c3c', fontWeight: 'bold', fontSize: '14px', background: 'rgba(231, 76, 60, 0.1)', padding: '6px 12px', borderRadius: '6px' }}>⚠️ هذه العملية تتم مرة واحدة فقط.</span>
+            </p>
+            <button 
+              onClick={handleGlobalScan}
+              style={{ padding: '15px 35px', fontSize: '18px', background: '#27ae60', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 4px 15px rgba(39, 174, 96, 0.3)' }}
+            >
+              🚀 ابدأ مسح المصحف الآن
+            </button>
+         </div>
+      </div>
+    );
+  }
+
+  // 🟢 3. شاشة الانتظار أثناء عملية المسح
+  if (isScanning) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', fontFamily: 'Arial, sans-serif', direction: 'rtl', backgroundColor: '#f4f6f8' }}>
+         <div style={{ background: '#fff', padding: '40px', borderRadius: '15px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)', textAlign: 'center', minWidth: '400px', border: '1px solid #e0e0e0' }}>
+            <div style={{ fontSize: '50px', marginBottom: '20px' }}>⚙️</div>
+            <h2 style={{ color: '#2c3e50', margin: '0 0 15px 0' }}>جاري هندسة النسيج القرآني...</h2>
+            <div style={{ color: '#e67e22', fontWeight: 'bold', fontSize: '16px', background: '#fdf2e9', padding: '10px', borderRadius: '6px' }}>{progress || 'يرجى الانتظار وعدم إغلاق الصفحة'}</div>
+         </div>
       </div>
     );
   }
