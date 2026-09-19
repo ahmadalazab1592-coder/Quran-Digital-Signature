@@ -1709,7 +1709,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     const ayahs = labOutputData.plotData.z; 
                     const values = labOutputData.plotData.y; 
                     const texts = labOutputData.plotData.text;
-                    const pointColors = labOutputData.plotData.colors; // للحفاظ على ألوان الأعداد الأولية والمميزة
+                    const pointColors = labOutputData.plotData.colors;
                     
                     const traces = [];
                     let currentAyah = null;
@@ -1722,39 +1722,72 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     
                     const totalAyahs = Math.max(...ayahs);
 
-                    // بناء ستارة (Ribbon) مستقلة لكل آية
                     for (let i = 0; i <= ayahs.length; i++) {
-                      // عند انتهاء الآية الحالية أو انتهاء المصفوفة، نقوم برسم الستارة
                       if (i === ayahs.length || (currentAyah !== null && ayahs[i] !== currentAyah)) {
                         
-                        // 🟢 تلوين ذكي: تتغير ألوان الستائر بتدرج طيفي رائع يعكس موقع الآية في السورة
                         const hue = (currentAyah / totalAyahs) * 300; 
-                        const surfaceColor = `hsla(${hue}, 80%, 50%, 0.25)`; // لون الستارة الشفافة
-                        const lineColor = `hsla(${hue}, 90%, 65%, 0.8)`;     // لون الخط العلوي
+                        const surfaceColor = `hsla(${hue}, 80%, 50%, 0.25)`; 
+                        const lineColor = `hsla(${hue}, 90%, 65%, 0.9)`;
 
-                        traces.push({
-                          type: 'scatter3d',
-                          mode: 'lines+markers',
-                          x: trace_x,       // محور X: رقم الآية (تصطف بجانب بعضها)
-                          y: trace_y,       // محور Y: العمق للداخل (ترتيب الكلمة)
-                          z: trace_z,       // محور Z: الارتفاع (القيمة العددية)
-                          text: trace_text,
-                          hoverinfo: 'text',
-                          marker: { 
-                            size: 4, 
-                            color: trace_colors, // الحفاظ على تمييز الأعداد الأولية والمضاعفات
-                            line: { color: '#fff', width: 0.5 } 
-                          },
-                          line: { color: lineColor, width: 4 }, // رسم قمة الجبل بخط سميك
-                          // 🟢 السر الهندسي: إنزال ستارة ممتلئة من الخط وحتى الأرض (Z=0)
-                          surfaceaxis: 2, 
-                          surfacecolor: surfaceColor,
-                          showlegend: false
-                        });
+                        const n = trace_x.length;
+
+                        if (n > 0) {
+                            // 🟢 1. بناء الستارة الهندسية بشكل صريح (Mesh3D) لمنع تشوهات WebGL
+                            // نحدد إحداثيات السقف (قيم الكلمات) وإحداثيات الأرض (أصفار)
+                            const mesh_x = [...trace_x, ...trace_x];
+                            const mesh_y = [...trace_y, ...trace_y];
+                            const mesh_z = [...trace_z, ...Array(n).fill(0)];
+                            
+                            const i_arr = [];
+                            const j_arr = [];
+                            const k_arr = [];
+                            
+                            // ربط النقاط بمثلثات دقيقة لتكوين ستارة قوية غير قابلة للتشوه
+                            for(let k = 0; k < n - 1; k++) {
+                                i_arr.push(k);
+                                j_arr.push(k + n);
+                                k_arr.push(k + 1);
+                                
+                                i_arr.push(k + n);
+                                j_arr.push(k + n + 1);
+                                k_arr.push(k + 1);
+                            }
+
+                            traces.push({
+                              type: 'mesh3d',
+                              x: mesh_x,
+                              y: mesh_y,
+                              z: mesh_z,
+                              i: i_arr,
+                              j: j_arr,
+                              k: k_arr,
+                              color: surfaceColor,
+                              opacity: 0.6,
+                              hoverinfo: 'skip',
+                              showscale: false
+                            });
+
+                            // 🟢 2. رسم مسار الكلمات والنقاط فوق الستارة (Scatter3D)
+                            traces.push({
+                              type: 'scatter3d',
+                              mode: 'lines+markers',
+                              x: trace_x,
+                              y: trace_y,
+                              z: trace_z,
+                              text: trace_text,
+                              hoverinfo: 'text',
+                              marker: { 
+                                size: 4, 
+                                color: trace_colors, 
+                                line: { color: '#fff', width: 0.5 } 
+                              },
+                              line: { color: lineColor, width: 4 },
+                              showlegend: false
+                            });
+                        }
 
                         if (i === ayahs.length) break;
                         
-                        // تصفير المتغيرات للآية الجديدة
                         trace_x = [];
                         trace_y = [];
                         trace_z = [];
@@ -1784,7 +1817,6 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                        xaxis: { title: labSettings.scope === 'quran' ? 'السور' : 'الآيات', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' }, 
                        yaxis: { title: 'العمق (الكلمات)', backgroundcolor: '#34495e', showbackground: true, gridcolor: '#4b6584' }, 
                        zaxis: { title: 'القيمة العددية', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' },
-                       // 🟢 ضبط أبعاد الكاميرا ليظهر محور الآيات (X) ممتداً والعمق (Y) متناسباً مع حجم السورة
                        aspectratio: { x: 1.8, y: 0.8, z: 0.6 }, 
                        camera: { eye: { x: -1.2, y: -1.6, z: 0.8 } }
                     },
