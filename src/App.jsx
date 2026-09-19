@@ -477,66 +477,89 @@ const normalizeForSearch = (text) => {
     if (viewScope === 'timeline' || viewScope === 'lab') setViewScope('surah');
   };
 
-// 🟢 محرك المطابقة والتوثيق الرقمي (مع رادار كشف الانحراف)
+// 🟢 محرك المطابقة والتوثيق الرقمي (مع رادار كشف الانحراف المحصن ضد الانزياح الفهرسي)
   const handleVerifyText = () => {
     if (!verifyText.trim()) { alert('يرجى إدخال أو رفع النص أولاً'); return; }
     if (globalFingerprints.length === 0) { alert('يرجى مسح المصحف أولاً'); return; }
     
-    let dbText = '';
     let targetName = '';
     let targetIdForHash = 0;
+    let dbTokensDetailed = [];
+    let dbWordsArray = [];
+
+    // منظف النصوص العام (لتجريد الأرقام وعلامات التنزيل والزخارف)
+    const stripPunctuation = (str) => str.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-\|]/g, ' ');
+
+    // دالة لتجهيز كلمات الآيات بدقة وإعطاء كل كلمة بطاقة تعريفية
+    const processSurah = (surah) => {
+       surah.ayahs.forEach(a => {
+          const words = stripPunctuation(a.text).split(/\s+/).filter(w => w.trim());
+          words.forEach((w, wIdx) => {
+             dbWordsArray.push(w);
+             dbTokensDetailed.push({
+                surahName: surah.name,
+                surahId: surah.id,
+                ayahNum: a.id || a.ayah || a.numberInSurah,
+                wordInAyah: wIdx + 1,
+                wordOrig: w
+             });
+          });
+       });
+    };
 
     if (verifySurahId === 0) {
-       dbText = quranData.map(s => s.ayahs.map(a => a.text).join(' ')).join(' ');
        targetName = 'المصحف كاملاً';
-       targetIdForHash = 999; 
+       targetIdForHash = 999;
+       quranData.forEach(s => processSurah(s));
     } else {
        const targetSurah = quranData.find(s => s.id === verifySurahId);
        if (!targetSurah) return;
-       dbText = targetSurah.ayahs.map(a => a.text).join(' ');
        targetName = `سورة ${targetSurah.name}`;
        targetIdForHash = targetSurah.id;
+       processSurah(targetSurah);
     }
 
-// 🟢 فرع المطابقة المرنة (لتجاهل الألف الخنجرية والتشكيل والزوائد وأرقام الآيات)
+    const inputWordsArray = stripPunctuation(verifyText).split(/\s+/).filter(w => w.trim());
+
+    // 🟢 فرع المطابقة المرنة
     if (verifyMode === 'flexible') {
-       // مقص تنظيف إضافي: يمسح الأرقام (العربية والإنجليزية) والأقواس وعلامات الترقيم ويحولها لمسافات
-       const stripPunctuation = (str) => str.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-]/g, ' ');
-       
-       const dbWords = stripPunctuation(dbText).split(/\s+/).filter(w => w.trim());
-       const inputWords = stripPunctuation(verifyText).split(/\s+/).filter(w => w.trim());
-       
        let isMatch = true;
        let mismatchInfo = null;
 
-       for (let i = 0; i < Math.max(dbWords.length, inputWords.length); i++) {
-           const wOriginal = dbWords[i] ? normalizeForSearch(dbWords[i]) : null;
-           const wInput = inputWords[i] ? normalizeForSearch(inputWords[i]) : null;
+       for (let i = 0; i < Math.max(dbWordsArray.length, inputWordsArray.length); i++) {
+           const origWordStr = dbWordsArray[i];
+           const origMeta = dbTokensDetailed[i];
+           const inpWordStr = inputWordsArray[i];
+
+           const wOriginal = origWordStr ? normalizeForSearch(origWordStr) : null;
+           const wInput = inpWordStr ? normalizeForSearch(inpWordStr) : null;
            
            if (wOriginal !== wInput) {
                isMatch = false;
                mismatchInfo = {
                    index: i + 1,
-                   origWord: dbWords[i] || '(نقص في النص)',
+                   surahName: origMeta ? origMeta.surahName : 'غير محدد (ربما نهاية المرجع)',
+                   surahId: origMeta ? origMeta.surahId : null,
+                   ayahNum: origMeta ? origMeta.ayahNum : '-',
+                   wordInAyah: origMeta ? origMeta.wordInAyah : '-',
+                   origWord: origWordStr || '(نقص في النص)',
                    origVal: 'تجاهل (وضع مرن)',
-                   inpWord: inputWords[i] || '(إضافة غريبة)',
+                   inpWord: inpWordStr || '(إضافة غريبة)',
                    inpVal: 'تجاهل (وضع مرن)'
                };
                break;
            }
        }
-
        setVerifyResult({ 
           isMatch, 
-          originalData: { signature: 'FLEX-MODE-NO-HASH', totalItems: dbWords.length, totalValue: 'N/A' }, 
-          inputData: { signature: 'FLEX-MODE-NO-HASH', totalItems: inputWords.length, totalValue: 'N/A' }, 
-          surahName: targetName, 
-          mismatchInfo 
+          originalData: { signature: 'FLEX-MODE-NO-HASH', totalItems: dbWordsArray.length, totalValue: 'N/A' }, 
+          inputData: { signature: 'FLEX-MODE-NO-HASH', totalItems: inputWordsArray.length, totalValue: 'N/A' }, 
+          surahName: targetName, mismatchInfo 
        });
        return;
     }
 
-    // 🟢 فرع المطابقة الصارمة (الكود الأصلي المشفر)
+    // 🟢 فرع المطابقة الصارمة
     const getLetterVal = (compositeId) => {
        const fp = globalFingerprints.find(g => g.compositeId === compositeId);
        if (!fp) return 0;
@@ -546,117 +569,122 @@ const normalizeForSearch = (text) => {
        return 0;
     };
 
-    const generateSignatureForText = (textInput, sId) => {
-       const cleanedText = cleanQuranText(textInput);
-       const words = cleanedText.split(/\s+/).filter(w => w.trim());
+    const generateSignatureForWordsArray = (wordsArray, sId) => {
        let totalValue = 0;
        let totalItems = 0;
        let tokens = [];
 
-       words.forEach((word) => {
-          let wordValueSum = 0;
-          let i = 0;
-          while (i < word.length) {
-             let char = word[i];
-             if (char === '\u0654' || char === '\u0655') char = 'ء';
-             let j = i + 1;
-             let diacritics = '';
-             while (j < word.length) {
-                let nextChar = word[j];
-                if (nextChar === '\u0640' && (word[j+1] === '\u0654' || word[j+1] === '\u0655')) break; 
-                if (nextChar === '\u0654' || nextChar === '\u0655') {
-                   let isChair = ['ا', 'و', 'ى', 'ي', 'ئ', '\u0640'].includes(char);
-                   let hasVowelBeforeHamza = /[\u064E\u064F\u0650\u0651\u0652]/.test(diacritics);
-                   if (!isChair || hasVowelBeforeHamza) break;
-                }
-                if (isDiacritic(nextChar) || nextChar === '\u0640' || isIgnoredChar(nextChar)) {
-                   if (isDiacritic(nextChar)) diacritics += nextChar; j++;
-                } else break;
-             }
-             let isSpecialHamza = false;
-             let isHamzaBelow = false;
-             if (char === '\u0640' && (diacritics.includes('\u0654') || diacritics.includes('\u0655'))) {
-                isHamzaBelow = diacritics.includes('\u0655'); char = 'ء';
-                diacritics = diacritics.replace('\u0654', '').replace('\u0655', ''); isSpecialHamza = true;
-             }
-             if (['ء', 'أ', 'إ', 'آ'].includes(char)) {
-                let prevB = getPrevBareLetter(word, i); let nextB = null;
-                for (let k = j; k < word.length; k++) {
-                   let nk = word[k];
-                   if (nk === '\u0654' || nk === '\u0655' || nk === '\u0640' || isDiacritic(nk) || isIgnoredChar(nk)) continue;
-                   if (isSafeArabicLetter(nk)) { nextB = ['أ', 'إ', 'آ', 'ٱ', 'ا'].includes(nk) ? 'ا' : nk; break; }
-                }
-                if (prevB === 'ل' && (nextB === 'ا' || diacritics.includes('\u0653') || char === 'آ')) {
-                   if (char === 'إ' || diacritics.includes('\u0650')) isHamzaBelow = true; char = 'ء'; isSpecialHamza = true;
-                } else if (char === 'ء' && !isSpecialHamza && prevB && !nonConnectingLeftChars.includes(prevB) && nextB !== null) {
-                   isSpecialHamza = true; if (diacritics.includes('\u0650')) isHamzaBelow = true;
-                }
-             }
-             const isClickable = isSafeArabicLetter(char) && char !== '\u0640';
-             if (isClickable) {
-                let bareLetter = char; let shapeBase = char;
-                if (char === 'ة') bareLetter = 'ت';
-                else if (['أ', 'إ', 'آ', 'ء', 'ؤ', 'ٱ', 'ئ'].includes(char)) { bareLetter = 'ا'; shapeBase = char; }
-                else if (char === 'ى') {
-                   let hasSmallAlif = false; let hasPrimaryDiacritic = false; let tempJ = i + 1;
-                   while (tempJ < word.length && (isDiacritic(word[tempJ]) || word[tempJ] === '\u0640' || isIgnoredChar(word[tempJ]))) {
-                      if (word[tempJ] === '\u0670') hasSmallAlif = true;
-                      if (['\u064E', '\u064F', '\u0650', '\u0651', '\u0652'].includes(word[tempJ])) hasPrimaryDiacritic = true; tempJ++;
-                   }
-                   bareLetter = (hasSmallAlif && !hasPrimaryDiacritic) ? 'ا' : (classifyYaaOrMaqsura(word, i, char) === 'ي' ? 'ي' : 'ا');
-                   shapeBase = char;
-                } else if (char === 'ي') { bareLetter = 'ي'; shapeBase = char; }
+       wordsArray.forEach((rawWord, origIndex) => {
+          // نمرر الكلمة على دالة التنظيف الصارمة
+          const cleanedWordText = cleanQuranText(rawWord);
+          const subWords = cleanedWordText.split(/\s+/).filter(w => w.trim());
+          
+          subWords.forEach(word => {
+              let wordValueSum = 0;
+              let i = 0;
+              while (i < word.length) {
+                 let char = word[i];
+                 if (char === '\u0654' || char === '\u0655') char = 'ء';
+                 let j = i + 1;
+                 let diacritics = '';
+                 while (j < word.length) {
+                    let nextChar = word[j];
+                    if (nextChar === '\u0640' && (word[j+1] === '\u0654' || word[j+1] === '\u0655')) break; 
+                    if (nextChar === '\u0654' || nextChar === '\u0655') {
+                       let isChair = ['ا', 'و', 'ى', 'ي', 'ئ', '\u0640'].includes(char);
+                       let hasVowelBeforeHamza = /[\u064E\u064F\u0650\u0651\u0652]/.test(diacritics);
+                       if (!isChair || hasVowelBeforeHamza) break;
+                    }
+                    if (isDiacritic(nextChar) || nextChar === '\u0640' || isIgnoredChar(nextChar)) {
+                       if (isDiacritic(nextChar)) diacritics += nextChar; j++;
+                    } else break;
+                 }
+                 let isSpecialHamza = false;
+                 let isHamzaBelow = false;
+                 if (char === '\u0640' && (diacritics.includes('\u0654') || diacritics.includes('\u0655'))) {
+                    isHamzaBelow = diacritics.includes('\u0655'); char = 'ء';
+                    diacritics = diacritics.replace('\u0654', '').replace('\u0655', ''); isSpecialHamza = true;
+                 }
+                 if (['ء', 'أ', 'إ', 'آ'].includes(char)) {
+                    let prevB = getPrevBareLetter(word, i); let nextB = null;
+                    for (let k = j; k < word.length; k++) {
+                       let nk = word[k];
+                       if (nk === '\u0654' || nk === '\u0655' || nk === '\u0640' || isDiacritic(nk) || isIgnoredChar(nk)) continue;
+                       if (isSafeArabicLetter(nk)) { nextB = ['أ', 'إ', 'آ', 'ٱ', 'ا'].includes(nk) ? 'ا' : nk; break; }
+                    }
+                    if (prevB === 'ل' && (nextB === 'ا' || diacritics.includes('\u0653') || char === 'آ')) {
+                       if (char === 'إ' || diacritics.includes('\u0650')) isHamzaBelow = true; char = 'ء'; isSpecialHamza = true;
+                    } else if (char === 'ء' && !isSpecialHamza && prevB && !nonConnectingLeftChars.includes(prevB) && nextB !== null) {
+                       isSpecialHamza = true; if (diacritics.includes('\u0650')) isHamzaBelow = true;
+                    }
+                 }
+                 const isClickable = isSafeArabicLetter(char) && char !== '\u0640';
+                 if (isClickable) {
+                    let bareLetter = char; let shapeBase = char;
+                    if (char === 'ة') bareLetter = 'ت';
+                    else if (['أ', 'إ', 'آ', 'ء', 'ؤ', 'ٱ', 'ئ'].includes(char)) { bareLetter = 'ا'; shapeBase = char; }
+                    else if (char === 'ى') {
+                       let hasSmallAlif = false; let hasPrimaryDiacritic = false; let tempJ = i + 1;
+                       while (tempJ < word.length && (isDiacritic(word[tempJ]) || word[tempJ] === '\u0640' || isIgnoredChar(word[tempJ]))) {
+                          if (word[tempJ] === '\u0670') hasSmallAlif = true;
+                          if (['\u064E', '\u064F', '\u0650', '\u0651', '\u0652'].includes(word[tempJ])) hasPrimaryDiacritic = true; tempJ++;
+                       }
+                       bareLetter = (hasSmallAlif && !hasPrimaryDiacritic) ? 'ا' : (classifyYaaOrMaqsura(word, i, char) === 'ي' ? 'ي' : 'ا');
+                       shapeBase = char;
+                    } else if (char === 'ي') { bareLetter = 'ي'; shapeBase = char; }
 
-                let connectRight = false; let connectLeft = false;
-                if (char !== 'ء') {
-                   const prevBare = getPrevBareLetter(word, i);
-                   if (prevBare && !nonConnectingLeftChars.includes(prevBare)) connectRight = true; 
-                   let hasNextLetter = false; let nextAcceptsRightConnection = false;
-                   for (let k = j; k < word.length; k++) {
-                      let nk = word[k];
-                      if (nk === 'ء' || nk === '\u0654' || nk === '\u0655') { hasNextLetter = true; break; }
-                      if (nk === '\u0640') {
-                         let checkNext = k + 1; let hasHamza = false;
-                         while (checkNext < word.length && (isDiacritic(word[checkNext]) || isIgnoredChar(word[checkNext]))) {
-                            if (word[checkNext] === '\u0654' || word[checkNext] === '\u0655') hasHamza = true; checkNext++;
-                         }
-                         if (hasHamza) { hasNextLetter = true; break; }
-                      }
-                      if (isSafeArabicLetter(nk) && nk !== '\u0640') { hasNextLetter = true; nextAcceptsRightConnection = true; break; }
-                   }
-                   let currentCharForConnection = char;
-                   if (char === 'ؤ') currentCharForConnection = 'و';
-                   if (['أ', 'إ', 'آ', 'ٱ'].includes(char)) currentCharForConnection = 'ا';
-                   if (hasNextLetter && nextAcceptsRightConnection && !nonConnectingLeftChars.includes(currentCharForConnection)) connectLeft = true; 
-                }
-                let connectionName = 'منفصل';
-                if (isSpecialHamza) connectionName = 'وسطي';
-                else if (char === 'ء') connectionName = 'منفصل';
-                else {
-                   if (connectRight && connectLeft) connectionName = 'وسطي';
-                   else if (connectRight && !connectLeft) connectionName = 'متطرف';
-                   else if (!connectRight && connectLeft) connectionName = 'مبتدئ';
-                }
-                let actualShape = shapeBase + diacritics;
-                if (isSpecialHamza) actualShape = (isHamzaBelow ? 'ـٕـ' : 'ـٔـ') + diacritics;
-                else if (char === 'ى' && connectLeft) actualShape = shapeBase + '\u0640' + diacritics;
-                if (overridesMap[actualShape]) {
-                   bareLetter = overridesMap[actualShape].newBareLetter || bareLetter;
-                   actualShape = overridesMap[actualShape].newShape || actualShape;
-                }
+                    let connectRight = false; let connectLeft = false;
+                    if (char !== 'ء') {
+                       const prevBare = getPrevBareLetter(word, i);
+                       if (prevBare && !nonConnectingLeftChars.includes(prevBare)) connectRight = true; 
+                       let hasNextLetter = false; let nextAcceptsRightConnection = false;
+                       for (let k = j; k < word.length; k++) {
+                          let nk = word[k];
+                          if (nk === 'ء' || nk === '\u0654' || nk === '\u0655') { hasNextLetter = true; break; }
+                          if (nk === '\u0640') {
+                             let checkNext = k + 1; let hasHamza = false;
+                             while (checkNext < word.length && (isDiacritic(word[checkNext]) || isIgnoredChar(word[checkNext]))) {
+                                if (word[checkNext] === '\u0654' || word[checkNext] === '\u0655') hasHamza = true; checkNext++;
+                             }
+                             if (hasHamza) { hasNextLetter = true; break; }
+                          }
+                          if (isSafeArabicLetter(nk) && nk !== '\u0640') { hasNextLetter = true; nextAcceptsRightConnection = true; break; }
+                       }
+                       let currentCharForConnection = char;
+                       if (char === 'ؤ') currentCharForConnection = 'و';
+                       if (['أ', 'إ', 'آ', 'ٱ'].includes(char)) currentCharForConnection = 'ا';
+                       if (hasNextLetter && nextAcceptsRightConnection && !nonConnectingLeftChars.includes(currentCharForConnection)) connectLeft = true; 
+                    }
+                    let connectionName = 'منفصل';
+                    if (isSpecialHamza) connectionName = 'وسطي';
+                    else if (char === 'ء') connectionName = 'منفصل';
+                    else {
+                       if (connectRight && connectLeft) connectionName = 'وسطي';
+                       else if (connectRight && !connectLeft) connectionName = 'متطرف';
+                       else if (!connectRight && connectLeft) connectionName = 'مبتدئ';
+                    }
+                    let actualShape = shapeBase + diacritics;
+                    if (isSpecialHamza) actualShape = (isHamzaBelow ? 'ـٕـ' : 'ـٔـ') + diacritics;
+                    else if (char === 'ى' && connectLeft) actualShape = shapeBase + '\u0640' + diacritics;
+                    if (overridesMap[actualShape]) {
+                       bareLetter = overridesMap[actualShape].newBareLetter || bareLetter;
+                       actualShape = overridesMap[actualShape].newShape || actualShape;
+                    }
 
-                const compositeId = fpLookupMap.get(`${bareLetter}_${actualShape}_${connectionName}`);
-                if (compositeId) {
-                   wordValueSum += getLetterVal(compositeId);
-                }
-             }
-             i = j;
-          }
-          if (wordValueSum > 0) {
-             totalValue += wordValueSum;
-             totalItems++;
-             tokens.push({ word, value: wordValueSum });
-          }
+                    const compositeId = fpLookupMap.get(`${bareLetter}_${actualShape}_${connectionName}`);
+                    if (compositeId) {
+                       wordValueSum += getLetterVal(compositeId);
+                    }
+                 }
+                 i = j;
+              }
+              if (wordValueSum > 0) {
+                 totalValue += wordValueSum;
+                 totalItems++;
+                 // 🟢 السر التقني هنا: نمرر الفهرس الأصلي للكلمة ليرتبط بها كبطاقة هوية
+                 tokens.push({ word, value: wordValueSum, origIndex: origIndex });
+              }
+          });
        });
 
        const hashBase = (totalValue * totalItems * sId).toString(16).toUpperCase();
@@ -664,8 +692,9 @@ const normalizeForSearch = (text) => {
        return { totalValue, totalItems, signature: `QUR-${idPrefix}-${totalItems}-${totalValue}-${hashBase}`, tokens };
     };
 
-    const originalData = generateSignatureForText(dbText, targetIdForHash);
-    const inputData = generateSignatureForText(verifyText, targetIdForHash);
+    const originalData = generateSignatureForWordsArray(dbWordsArray, targetIdForHash);
+    const inputData = generateSignatureForWordsArray(inputWordsArray, targetIdForHash);
+    
     const isMatch = originalData.signature === inputData.signature;
 
     let mismatchInfo = null;
@@ -673,9 +702,18 @@ const normalizeForSearch = (text) => {
        for (let i = 0; i < Math.max(originalData.tokens.length, inputData.tokens.length); i++) {
           const orig = originalData.tokens[i];
           const inp = inputData.tokens[i];
+          
           if (!orig || !inp || orig.value !== inp.value || orig.word !== inp.word) {
+             
+             // 🟢 استخراج هوية الكلمة بناءً على الفهرس المحفوظ، مهما كانت كمية الكلمات المحذوفة
+             const origMeta = orig ? dbTokensDetailed[orig.origIndex] : null;
+             
              mismatchInfo = {
-                index: i + 1,
+                index: i + 1, // رقم الكلمة الفعلي المقروء بالرادار
+                surahName: origMeta ? origMeta.surahName : 'غير محدد',
+                surahId: origMeta ? origMeta.surahId : null,
+                ayahNum: origMeta ? origMeta.ayahNum : '-',
+                wordInAyah: origMeta ? origMeta.wordInAyah : '-',
                 origWord: orig ? orig.word : '(نقص في النص)',
                 origVal: orig ? orig.value : 0,
                 inpWord: inp ? inp.word : '(إضافة غريبة)',
@@ -1666,31 +1704,95 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                    {labSettings.highlightLetter && <span style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#e74c3c', display: 'inline-block' }}></span> حرف المُميز ({labSettings.highlightLetter}) 🎯</span>}
                 </div>
 
-                <Plot
-                  data={[{
-                    x: labOutputData.plotData.x,
-                    y: labOutputData.plotData.y,
-                    z: labOutputData.plotData.z,
-                    text: labOutputData.plotData.text,
-                    hoverinfo: 'text',
-                    mode: 'markers+lines',
-                    type: 'scatter3d',
-                    marker: { size: 6, color: labOutputData.plotData.colors, opacity: 0.8 },
-                    line: { color: 'rgba(255, 255, 255, 0.2)', width: 2 }
-                  }]}
+<Plot
+                  data={(() => {
+                    const ayahs = labOutputData.plotData.z; 
+                    const values = labOutputData.plotData.y; 
+                    const texts = labOutputData.plotData.text;
+                    const pointColors = labOutputData.plotData.colors; // للحفاظ على ألوان الأعداد الأولية والمميزة
+                    
+                    const traces = [];
+                    let currentAyah = null;
+                    let trace_x = [];
+                    let trace_y = [];
+                    let trace_z = [];
+                    let trace_text = [];
+                    let trace_colors = [];
+                    let wordDepth = 1;
+                    
+                    const totalAyahs = Math.max(...ayahs);
+
+                    // بناء ستارة (Ribbon) مستقلة لكل آية
+                    for (let i = 0; i <= ayahs.length; i++) {
+                      // عند انتهاء الآية الحالية أو انتهاء المصفوفة، نقوم برسم الستارة
+                      if (i === ayahs.length || (currentAyah !== null && ayahs[i] !== currentAyah)) {
+                        
+                        // 🟢 تلوين ذكي: تتغير ألوان الستائر بتدرج طيفي رائع يعكس موقع الآية في السورة
+                        const hue = (currentAyah / totalAyahs) * 300; 
+                        const surfaceColor = `hsla(${hue}, 80%, 50%, 0.25)`; // لون الستارة الشفافة
+                        const lineColor = `hsla(${hue}, 90%, 65%, 0.8)`;     // لون الخط العلوي
+
+                        traces.push({
+                          type: 'scatter3d',
+                          mode: 'lines+markers',
+                          x: trace_x,       // محور X: رقم الآية (تصطف بجانب بعضها)
+                          y: trace_y,       // محور Y: العمق للداخل (ترتيب الكلمة)
+                          z: trace_z,       // محور Z: الارتفاع (القيمة العددية)
+                          text: trace_text,
+                          hoverinfo: 'text',
+                          marker: { 
+                            size: 4, 
+                            color: trace_colors, // الحفاظ على تمييز الأعداد الأولية والمضاعفات
+                            line: { color: '#fff', width: 0.5 } 
+                          },
+                          line: { color: lineColor, width: 4 }, // رسم قمة الجبل بخط سميك
+                          // 🟢 السر الهندسي: إنزال ستارة ممتلئة من الخط وحتى الأرض (Z=0)
+                          surfaceaxis: 2, 
+                          surfacecolor: surfaceColor,
+                          showlegend: false
+                        });
+
+                        if (i === ayahs.length) break;
+                        
+                        // تصفير المتغيرات للآية الجديدة
+                        trace_x = [];
+                        trace_y = [];
+                        trace_z = [];
+                        trace_text = [];
+                        trace_colors = [];
+                        wordDepth = 1;
+                      }
+                      
+                      currentAyah = ayahs[i];
+                      trace_x.push(ayahs[i]);
+                      trace_y.push(wordDepth);
+                      trace_z.push(values[i]);
+                      trace_text.push(texts[i]);
+                      trace_colors.push(pointColors && pointColors[i] ? pointColors[i] : '#3498db');
+                      
+                      wordDepth++;
+                    }
+
+                    return traces;
+                  })()}
                   layout={{ 
-                    title: { text: 'المسار الجيني الزمكاني ثلاثي الأبعاد (3D Helix)', font: { color: '#ecf0f1', family: 'Arial' } }, 
+                    title: { text: 'الستائر الطوبوغرافية (العمق الدقيق للآيات)', font: { color: '#ecf0f1', family: '"Amiri Quran", Arial', size: 22 } }, 
                     autosize: true, 
-                    paper_bgcolor: '#1e272e', font: { color: '#ecf0f1' }, 
+                    paper_bgcolor: '#1e272e', 
+                    font: { color: '#ecf0f1' }, 
                     scene: { 
-                       xaxis: { title: 'الترتيب المطلق (X)', backgroundcolor: '#2c3e50', showbackground: true }, 
-                       yaxis: { title: 'القيمة العددية (Y)', backgroundcolor: '#34495e', showbackground: true }, 
-                       zaxis: { title: labSettings.scope === 'quran' ? 'رقم السورة (Z)' : 'رقم الآية (Z)', backgroundcolor: '#2c3e50', showbackground: true } 
+                       xaxis: { title: labSettings.scope === 'quran' ? 'السور' : 'الآيات', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' }, 
+                       yaxis: { title: 'العمق (الكلمات)', backgroundcolor: '#34495e', showbackground: true, gridcolor: '#4b6584' }, 
+                       zaxis: { title: 'القيمة العددية', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' },
+                       // 🟢 ضبط أبعاد الكاميرا ليظهر محور الآيات (X) ممتداً والعمق (Y) متناسباً مع حجم السورة
+                       aspectratio: { x: 1.8, y: 0.8, z: 0.6 }, 
+                       camera: { eye: { x: -1.2, y: -1.6, z: 0.8 } }
                     },
-                    margin: { l: 0, r: 0, t: 50, b: 0 }
+                    margin: { l: 0, r: 0, t: 50, b: 0 },
+                    showlegend: false
                   }}
                   useResizeHandler={true}
-                  style={{ width: '100%', flexGrow: 1, minHeight: '550px' }}
+                  style={{ width: '100%', flexGrow: 1, minHeight: '600px' }}
                 />
               </div>
             ) : (
@@ -1876,6 +1978,10 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                       
                       <p style={{ margin: '0 0 15px 0', fontSize: '16px', color: '#2c3e50', lineHeight: '1.6' }}>
                         تم اكتشاف أول نقطة اختلاف بين المرجع والنص المدخل عند <b>الكلمة رقم ({verifyResult.mismatchInfo.index})</b>:
+                        <br/>
+                        <span style={{ color: '#c0392b', fontWeight: 'bold', fontSize: '15px', display: 'inline-block', marginTop: '8px', background: '#fdedec', padding: '4px 8px', borderRadius: '4px' }}>
+                            🧭 الموقع: سورة {verifyResult.mismatchInfo.surahName} (الآية: {verifyResult.mismatchInfo.ayahNum}، الكلمة: {verifyResult.mismatchInfo.wordInAyah})
+                        </span>
                       </p>
                       
                       <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', marginBottom: '15px' }}>
@@ -1899,6 +2005,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                             </div>
                          </div>
                       </div>
+
 
                       {/* 🟢 رسالة التنبيه الجوهرية للمستخدم */}
                       <div style={{ background: '#fef9e7', borderRight: '4px solid #f1c40f', padding: '12px', borderRadius: '4px', color: '#d35400', fontSize: '14px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -2484,9 +2591,9 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
 
                     {/* 3. دقة التوثيق والمحرك المعياري */}
                     <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', borderRight: '4px solid #f39c12', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-                       <h4 style={{ margin: '0 0 10px 0', color: '#d35400', fontSize: '18px' }}>🎯 دقة التوثيق ومحرك التوحيد المعياري</h4>
+                       <h4 style={{ margin: '0 0 10px 0', color: '#d35400', fontSize: '18px' }}>🎯 دقة التوثيق ومحرك البحث المعياري</h4>
                        <p style={{ margin: 0 }}>
-                          لتحقيق أقصى درجات الدقة الإحصائية، لم يتم إهمال أي تفصيل دقيق (كالهمزات العائمة على مد التطويل والياء المعكوفة). تم تزويد المنصة بمحرك ذكي يفهم هذه التعقيدات ويوحدها للبحث، مع مقص ذكي يتخطى البسملة الاستهلالية لحماية سلامة الإحصائيات الزمكانية المطلقة.
+                          لتحقيق أقصى درجات الدقة الإحصائية، لم يتم إهمال أي تفصيل دقيق (كحركات التشكيل و علامات النطق و القراءة و الهمزات العائمة على مد التطويل والياء المعكوفةو غيرها ). تم تزويد المنصة بمحرك ذكي يفهم هذه التعقيدات ويوحدها للبحث، مع مقص ذكي يتخطى البسملة الاستهلالية لحماية سلامة الإحصائيات الرقمية المطلقة.
                        </p>
                     </div>
 
@@ -2502,7 +2609,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', borderRight: '4px solid #e74c3c', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
                        <h4 style={{ margin: '0 0 10px 0', color: '#c0392b', fontSize: '18px' }}>🛡️ غرفة التوثيق وكشف التحريف</h4>
                        <p style={{ margin: 0 }}>
-                          تستخدم المنصة خوارزميات التشفير (Hashing) لتوليد "توقيع رقمي زمكاني" لأي نص. كما تحتوي الغرفة على <b style={{color: '#c0392b'}}>رادار المحاذاة الذكية (Smart Diffing)</b> القادر على اكتشاف أي محاولة للتحريف (نقص، زيادة، أو استبدال) في أي نص يُعرض عليه ومطابقته بدقة مع المرجع الأصلي.
+                          تستخدم المنصة خوارزميات التشفير  لتوليد "توقيع رقمي فريد" لأي نص. كما تحتوي الغرفة على <b style={{color: '#c0392b'}}>رادار المحاذاة الذكية </b> القادر على اكتشاف أي محاولة للتحريف (نقص، زيادة، أو استبدال) في أي نص يُعرض عليه ومطابقته بدقة مع المرجع الأصلي.
                        </p>
                     </div>
 
