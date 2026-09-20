@@ -5,6 +5,7 @@ import { scanWholeQuran } from './utils/scanner';
 import { cleanQuranText, isArabicLetter, isDiacritic, classifyYaaOrMaqsura, isIgnoredChar } from './utils/textProcessor';
 import Plot from 'react-plotly.js';
 import { Analytics } from '@vercel/analytics/react';
+import './App.css';
 
 const nonConnectingLeftChars = ['ا', 'أ', 'إ', 'آ', 'ٱ', 'د', 'ذ', 'ر', 'ز', 'و', 'ؤ', 'ة', 'ء'];
 
@@ -1691,7 +1692,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     margin: { l: 60, r: 20, t: 50, b: 50 }
                   }}
                   useResizeHandler={true}
-                  style={{ width: '100%', flexGrow: 1, minHeight: '500px' }}
+                  style={{ width: '100%', flexGrow: 1, minHeight: '40vh', maxHeight: '500px' }}
                 />
               </div>
             ) : labSettings.outputType === '3d' ? (
@@ -1824,7 +1825,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     showlegend: false
                   }}
                   useResizeHandler={true}
-                  style={{ width: '100%', flexGrow: 1, minHeight: '600px' }}
+                  style={{ width: '100%', flexGrow: 1, minHeight: '50vh', maxHeight: '700px' }}
                 />
               </div>
             ) : (
@@ -2016,24 +2017,27 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                         </span>
                       </p>
                       
-                      <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', marginBottom: '15px' }}>
-                         <div style={{ flex: 1, background: '#f8f9fa', padding: '15px', borderRadius: '6px', border: '1px solid #bdc3c7', textAlign: 'center' }}>
+<div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center', marginBottom: '15px' }}>
+                         
+                         {/* صندوق المرجع القرآني */}
+                         <div style={{ flex: '1 1 280px', minWidth: '280px', background: '#f8f9fa', padding: '15px', borderRadius: '6px', border: '1px solid #bdc3c7', textAlign: 'center' }}>
                             <div style={{ color: '#7f8c8d', fontSize: '14px', marginBottom: '5px' }}>في المرجع القرآني (الأصلي):</div>
                             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#27ae60', fontFamily: '"Amiri Quran", serif' }}>
                                {verifyResult.mismatchInfo.origWord}
                             </div>
                             <div style={{ marginTop: '5px', fontSize: '14px', color: '#27ae60', fontWeight: 'bold' }}>
-                               قيمة البصمة: {verifyResult.mismatchInfo.origVal.toLocaleString()}
+                               قيمة البصمة: {typeof verifyResult.mismatchInfo.origVal === 'number' ? verifyResult.mismatchInfo.origVal.toLocaleString() : verifyResult.mismatchInfo.origVal}
                             </div>
                          </div>
                          
-                         <div style={{ flex: 1, background: '#fdedec', padding: '15px', borderRadius: '6px', border: '1px solid #e74c3c', textAlign: 'center' }}>
+                         {/* صندوق النص المُحرف */}
+                         <div style={{ flex: '1 1 280px', minWidth: '280px', background: '#fdedec', padding: '15px', borderRadius: '6px', border: '1px solid #e74c3c', textAlign: 'center' }}>
                             <div style={{ color: '#c0392b', fontSize: '14px', marginBottom: '5px' }}>في النص المُدخل (المُحرف):</div>
                             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c0392b', fontFamily: '"Amiri Quran", serif' }}>
                                {verifyResult.mismatchInfo.inpWord}
                             </div>
                             <div style={{ marginTop: '5px', fontSize: '14px', color: '#c0392b', fontWeight: 'bold' }}>
-                               قيمة البصمة: {verifyResult.mismatchInfo.inpVal.toLocaleString()}
+                               قيمة البصمة: {typeof verifyResult.mismatchInfo.inpVal === 'number' ? verifyResult.mismatchInfo.inpVal.toLocaleString() : verifyResult.mismatchInfo.inpVal}
                             </div>
                          </div>
                       </div>
