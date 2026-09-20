@@ -1857,6 +1857,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
         </div>
       )}
 
+
       {/* 🟢 غرفة التوثيق والمطابقة */}
       {viewScope === 'verify' && (
         <div style={{ background: '#fff', border: '1px solid #bdc3c7', borderRadius: '8px', padding: '25px', marginTop: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
