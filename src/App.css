@@ -1,13 +1,36 @@
-/* استعلام وسائط لشاشات الهواتف (أصغر من 768 بيكسل) */
-@media screen and (max-width: 768px) {
+/* إخفاء شاشة التدوير في الوضع الطبيعي (شاشات الكمبيوتر والهواتف بالعرض) */
+.rotate-device-overlay {
+  display: none;
+}
+
+/* 🟢 إذا كان الجهاز شاشة صغيرة (هاتف) والهاتف في الوضع الرأسي (Portrait) */
+@media screen and (max-width: 900px) and (orientation: portrait) {
+  
+  /* منع المستخدم من التمرير لأعلى وأسفل أثناء ظهور رسالة التحذير */
   body {
-    padding: 10px;
+    overflow: hidden !important;
   }
-  h1, h2, h3, h4 {
-    font-size: 90% !important;
+
+  /* إظهار رسالة الإجبار على التدوير لتملأ الشاشة وتغطي كل شيء */
+  .rotate-device-overlay {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: #2c3e50; /* خلفية داكنة صلبة */
+    z-index: 999999; /* أعلى طبقة فوق كل الشاشات الأخرى */
+    text-align: center;
   }
-  input, textarea, button {
-    width: 100% !important;
-    margin-bottom: 10px;
-  }
+}
+
+/* حركة بسيطة لأيقونة الهاتف لتشجيع المستخدم على التدوير */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  50% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
 }
