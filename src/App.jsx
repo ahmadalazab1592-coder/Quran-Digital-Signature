@@ -1694,7 +1694,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                    {labSettings.highlightLetter && <span style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '14px', height: '14px', borderRadius: '50%', backgroundColor: '#e74c3c', display: 'inline-block' }}></span> حرف المُميز ({labSettings.highlightLetter}) 🎯</span>}
                 </div>
                 
-                <Plot
+<Plot
                   data={[{
                     x: labOutputData.plotData.x,
                     y: labOutputData.plotData.y,
@@ -1714,7 +1714,8 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     margin: { l: 60, r: 20, t: 50, b: 50 }
                   }}
                   useResizeHandler={true}
-                  style={{ width: '100%', flexGrow: 1, minHeight: '40vh', maxHeight: '500px' }}
+                  // 🟢 تم إرجاع الطول ليكون ثابتاً لمنع الانضغاط في الهواتف العرضية
+                  style={{ width: '100%', height: '500px' }}
                 />
               </div>
             ) : labSettings.outputType === '3d' ? (
@@ -1749,48 +1750,40 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                       if (i === ayahs.length || (currentAyah !== null && ayahs[i] !== currentAyah)) {
                         
                         const hue = (currentAyah / totalAyahs) * 300; 
-                        const surfaceColor = `hsla(${hue}, 80%, 50%, 0.25)`; 
+                        const baseColor = `hsl(${hue}, 80%, 50%)`; 
                         const lineColor = `hsla(${hue}, 90%, 65%, 0.9)`;
 
                         const n = trace_x.length;
 
                         if (n > 0) {
-                            // 🟢 1. بناء الستارة الهندسية بشكل صريح (Mesh3D) لمنع تشوهات WebGL
-                            // نحدد إحداثيات السقف (قيم الكلمات) وإحداثيات الأرض (أصفار)
-                            const mesh_x = [...trace_x, ...trace_x];
-                            const mesh_y = [...trace_y, ...trace_y];
-                            const mesh_z = [...trace_z, ...Array(n).fill(0)];
+                            // 🟢 استعادة السحر الهندسي: إمالة السطح بمقدار 0.01 لمنع انهيار WebGL 
+                            let x_bottom = trace_x.map(x => x - 0.01);
+                            let x_top    = trace_x.map(x => x + 0.01);
+                            let y_arr    = [...trace_y];
+                            let z_arr    = [...trace_z];
                             
-                            const i_arr = [];
-                            const j_arr = [];
-                            const k_arr = [];
-                            
-                            // ربط النقاط بمثلثات دقيقة لتكوين ستارة قوية غير قابلة للتشوه
-                            for(let k = 0; k < n - 1; k++) {
-                                i_arr.push(k);
-                                j_arr.push(k + n);
-                                k_arr.push(k + 1);
-                                
-                                i_arr.push(k + n);
-                                j_arr.push(k + n + 1);
-                                k_arr.push(k + 1);
+                            // معالجة الآية ذات الكلمة الواحدة
+                            if (n === 1) {
+                                x_bottom.push(x_bottom[0]);
+                                x_top.push(x_top[0]);
+                                y_arr.push(y_arr[0] + 0.1);
+                                z_arr.push(z_arr[0]);
                             }
 
+                            // 1. رسم الستارة (Surface)
                             traces.push({
-                              type: 'mesh3d',
-                              x: mesh_x,
-                              y: mesh_y,
-                              z: mesh_z,
-                              i: i_arr,
-                              j: j_arr,
-                              k: k_arr,
-                              color: surfaceColor,
-                              opacity: 0.6,
+                              type: 'surface',
+                              x: [x_bottom, x_top],
+                              y: [y_arr, y_arr],
+                              z: [Array(x_bottom.length).fill(0), z_arr],
+                              colorscale: [[0, baseColor], [1, baseColor]],
+                              opacity: 0.35,
+                              showscale: false,
                               hoverinfo: 'skip',
-                              showscale: false
+                              contours: { x: { show: false }, y: { show: false }, z: { show: false } }
                             });
 
-                            // 🟢 2. رسم مسار الكلمات والنقاط فوق الستارة (Scatter3D)
+                            // 2. رسم مسار الكلمات (Scatter3D)
                             traces.push({
                               type: 'scatter3d',
                               mode: 'lines+markers',
@@ -1799,12 +1792,8 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                               z: trace_z,
                               text: trace_text,
                               hoverinfo: 'text',
-                              marker: { 
-                                size: 4, 
-                                color: trace_colors, 
-                                line: { color: '#fff', width: 0.5 } 
-                              },
-                              line: { color: lineColor, width: 4 },
+                              marker: { size: 4, color: trace_colors, line: { color: '#fff', width: 0.5 } },
+                              line: { color: lineColor, width: 3 },
                               showlegend: false
                             });
                         }
@@ -1840,14 +1829,20 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                        xaxis: { title: labSettings.scope === 'quran' ? 'السور' : 'الآيات', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' }, 
                        yaxis: { title: 'العمق (الكلمات)', backgroundcolor: '#34495e', showbackground: true, gridcolor: '#4b6584' }, 
                        zaxis: { title: 'القيمة العددية', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' },
-                       aspectratio: { x: 1.8, y: 0.8, z: 0.6 }, 
-                       camera: { eye: { x: -1.2, y: -1.6, z: 0.8 } }
+                       // 🟢 صندوق التروس الديناميكي: 1 للفاتحة (مكعب)، ويمتد ناعماً للسور الطويلة كـ الرحمن (بحد أقصى 3)
+                       aspectratio: { 
+                         x: labSettings.scope === 'quran' ? 2.5 : Math.max(1, Math.min(3, Math.max(...labOutputData.plotData.z) / 20)), 
+                         y: 1, 
+                         z: 0.7 
+                       }, 
+                       // 🟢 إعادة كاميرا المنظور الطبيعية (الواقعية) مع إبعادها قليلاً لتتضح الصورة
+                       camera: { eye: { x: -1.5, y: -1.5, z: 0.5 } }
                     },
                     margin: { l: 0, r: 0, t: 50, b: 0 },
                     showlegend: false
                   }}
                   useResizeHandler={true}
-                  style={{ width: '100%', flexGrow: 1, minHeight: '50vh', maxHeight: '700px' }}
+                  style={{ width: '100%', height: '600px' }}
                 />
               </div>
             ) : (
