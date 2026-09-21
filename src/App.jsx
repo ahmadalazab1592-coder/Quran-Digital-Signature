@@ -6,6 +6,7 @@ import { cleanQuranText, isArabicLetter, isDiacritic, classifyYaaOrMaqsura, isIg
 import Plot from 'react-plotly.js';
 import { Analytics } from '@vercel/analytics/react';
 import './App.css';
+import { quranData as tanzilData } from './db/QuranTanzilDB.js';
 
 const nonConnectingLeftChars = ['ا', 'أ', 'إ', 'آ', 'ٱ', 'د', 'ذ', 'ر', 'ز', 'و', 'ؤ', 'ة', 'ء'];
 
@@ -70,7 +71,7 @@ function MainApp() {
 
   // 🟢 متغيرات غرفة التوثيق والمطابقة
   const [verifyText, setVerifyText] = useState('');
-  const [verifySurahId, setVerifySurahId] = useState(1);
+  const [verifySurahId, setVerifySurahId] = useState(0); // 0 تعني المصحف كاملاً
   const [verifyResult, setVerifyResult] = useState(null);
   const [verifyNumBase, setVerifyNumBase] = useState('spatial');
   const [verifyMode, setVerifyMode] = useState('strict'); // 🟢 السطر الجديد: لتحديد مستوى الصرامة
@@ -181,8 +182,9 @@ const [labSettings, setLabSettings] = useState({
   );
   const manualOverrides = useLiveQuery(() => db.manual_overrides.toArray(), []) || [];
 
-  useEffect(() => {
-    fetch('/quran.json').then(res => res.json()).then(setQuranData).catch(console.error);
+useEffect(() => {
+    // تم استبدال الجلب من الشبكة بالحقن المباشر لقاعدة تنزيل
+    setQuranData(tanzilData);
   }, []);
 
   const currentSurah = quranData.find(s => s.id === Number(selectedSurahId));
@@ -488,9 +490,11 @@ const normalizeForSearch = (text) => {
     let dbTokensDetailed = [];
     let dbWordsArray = [];
 
-    // منظف النصوص العام (لتجريد الأرقام وعلامات التنزيل والزخارف)
-    const stripPunctuation = (str) => str.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-\|]/g, ' ');
-
+   // منظف النصوص العام (لتجريد الأرقام، الزخارف، وكافة علامات الوقف والأحزاب والسجدات القرآنية)
+    const stripPunctuation = (str) => {
+       if (!str) return '';
+       return str.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-\|\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u06DE\u06E9]/g, ' ');
+    };
     // دالة لتجهيز كلمات الآيات بدقة وإعطاء كل كلمة بطاقة تعريفية
     const processSurah = (surah) => {
        surah.ayahs.forEach(a => {
@@ -522,6 +526,25 @@ const normalizeForSearch = (text) => {
 
     const inputWordsArray = stripPunctuation(verifyText).split(/\s+/).filter(w => w.trim());
 
+// 🟢 دالة التجريد القاسية المخصصة للوضع المرن فقط
+    const normalizeForFlexibleMatch = (word) => {
+      if (!word) return '';
+      return word
+        // 1. إزالة التشكيل، علامات الوقف، والمدة، والتطويل (الكشيدة: ـ)
+        .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u0640]/g, '') // 👈 تم إضافة \u0640 هنا
+        // 2. توحيد كافة أشكال الألف (آ، أ، إ، ٱ) إلى ألف حافية (ا)
+        .replace(/[أإآٱ]/g, 'ا') // 👈 تم إضافة ٱ (همزة الوصل) هنا
+        // 3. إزالة الهمزة العائمة (ء) تماماً لتخطي موقعها
+        .replace(/ء/g, '')
+        // 4. تحويل كراسي الهمزة لحروفها الأساسية (ئ -> ي، ؤ -> و)
+        .replace(/ئ/g, 'ي')
+        .replace(/ؤ/g, 'و')
+        // 5. توحيد الألف المقصورة والياء
+        .replace(/[ى]/g, 'ي')
+        // 6. توحيد التاء المربوطة والهاء
+        .replace(/ة/g, 'ه');
+    };
+
     // 🟢 فرع المطابقة المرنة
     if (verifyMode === 'flexible') {
        let isMatch = true;
@@ -532,8 +555,9 @@ const normalizeForSearch = (text) => {
            const origMeta = dbTokensDetailed[i];
            const inpWordStr = inputWordsArray[i];
 
-           const wOriginal = origWordStr ? normalizeForSearch(origWordStr) : null;
-           const wInput = inpWordStr ? normalizeForSearch(inpWordStr) : null;
+           // 🟢 استخدام دالة التجريد القاسية الجديدة بدلاً من normalizeForSearch
+           const wOriginal = origWordStr ? normalizeForFlexibleMatch(origWordStr) : null;
+           const wInput = inpWordStr ? normalizeForFlexibleMatch(inpWordStr) : null;
            
            if (wOriginal !== wInput) {
                isMatch = false;
@@ -544,9 +568,10 @@ const normalizeForSearch = (text) => {
                    ayahNum: origMeta ? origMeta.ayahNum : '-',
                    wordInAyah: origMeta ? origMeta.wordInAyah : '-',
                    origWord: origWordStr || '(نقص في النص)',
-                   origVal: 'تجاهل (وضع مرن)',
+                   // 🟢 عرض الهيكل المجرد للكلمة لتسهيل فحص سبب الانهيار
+                   origVal: `المجرد: ${wOriginal || 'فارغ'}`, 
                    inpWord: inpWordStr || '(إضافة غريبة)',
-                   inpVal: 'تجاهل (وضع مرن)'
+                   inpVal: `المجرد: ${wInput || 'فارغ'}`
                };
                break;
            }
@@ -726,6 +751,14 @@ const normalizeForSearch = (text) => {
     }
 
     setVerifyResult({ isMatch, originalData, inputData, surahName: targetName, mismatchInfo });
+    
+    // 🟢 التمرير التلقائي الانسيابي لأسفل لرؤية النتيجة
+    setTimeout(() => {
+       const resultBox = document.getElementById('verify-result-box');
+       if (resultBox) {
+          resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+       }
+    }, 150);
   };
 
 const executeLabAnalysis = () => {
@@ -737,7 +770,13 @@ const executeLabAnalysis = () => {
     }
 
     setLabOutputData({ status: 'Processing...', preview: 'جاري المعالجة وبناء الفضاء الزمكاني...', plotData: null });
-
+    // 🟢 التمرير التلقائي الانسيابي لرؤية الرسم أو المخرجات
+    setTimeout(() => {
+       const labBox = document.getElementById('lab-output-box');
+       if (labBox) {
+          labBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+       }
+    }, 100);
     setTimeout(() => {
       try {
         const targetSurahs = labSettings.scope === 'quran' ? quranData : [currentSurah];
@@ -1676,7 +1715,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
             </button>
           </div>
 
-<div style={{ marginTop: '30px', background: '#1e272e', borderRadius: '8px', minHeight: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ecf0f1', padding: '20px', border: '4px solid #2c3e50', overflow: 'hidden' }}>
+<div id="lab-output-box" style={{ marginTop: '30px', background: '#1e272e', borderRadius: '8px', minHeight: '500px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ecf0f1', padding: '20px', border: '4px solid #2c3e50', overflow: 'hidden' }}>
             {!labOutputData ? (
               <div style={{ textAlign: 'center', opacity: 0.5 }}>
                 <div style={{ fontSize: '48px', marginBottom: '10px' }}>🌌</div>
@@ -1935,24 +1974,48 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                      reader.onload = (evt) => {
                        const content = evt.target.result;
                        
-                       // 🟢 محرك الفهم الذكي لصيغة JSON
+// 🟢 محرك الفهم الذكي لصيغة JSON (النسخة المعيارية المتقدمة)
                        if (file.name.toLowerCase().endsWith('.json')) {
                          try {
                            const jsonData = JSON.parse(content);
-                           let extractedAyahs = []; // مصفوفة لتجميع الآيات
+                           let extractedAyahs = [];
                            
-                           const extractQuranText = (obj) => {
+                           // مصفوفة بكل أشكال البسملة الممكنة في نصوص JSON (العثمانية والإملائية)
+                           const BASMALAH_FORMS = [
+                             "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ ",
+                             "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ ",
+                             "بسم الله الرحمن الرحيم "
+                           ];
+
+                           // دالة متداخلة تقوم بتوريث رقم السورة للطبقات الداخلية
+                           const extractQuranText = (obj, parentSurah = null) => {
                              if (Array.isArray(obj)) {
-                               obj.forEach(extractQuranText);
+                               obj.forEach(item => extractQuranText(item, parentSurah));
                              } else if (obj !== null && typeof obj === 'object') {
-                               if (obj.text && typeof obj.text === 'string' && /[\u0600-\u06FF]/.test(obj.text)) {
-                                  extractedAyahs.push(obj.text.trim());
-                               } else if (obj.text_uthmani && typeof obj.text_uthmani === 'string') {
-                                  extractedAyahs.push(obj.text_uthmani.trim());
-                               } else if (obj.aya_text && typeof obj.aya_text === 'string') {
-                                  extractedAyahs.push(obj.aya_text.trim());
+                               
+                               // 1. محاولة التقاط رقم السورة من المفاتيح الشائعة في ملفات JSON العالمية
+                               const currentSurah = obj.surah || obj.surah_number || obj.chapter || obj.sura || obj.surah_id || parentSurah;
+                               
+                               // 2. البحث عن النص القرآني
+                               let text = null;
+                               if (obj.text && typeof obj.text === 'string' && /[\u0600-\u06FF]/.test(obj.text)) text = obj.text.trim();
+                               else if (obj.text_uthmani && typeof obj.text_uthmani === 'string') text = obj.text_uthmani.trim();
+                               else if (obj.aya_text && typeof obj.aya_text === 'string') text = obj.aya_text.trim();
+                               
+                               if (text) {
+                                  // 3. الفلتر الذكي: إذا وجدنا رقم السورة (وليس الفاتحة) نزيل البسملة
+                                  if (currentSurah && Number(currentSurah) !== 1) {
+                                      for (let basmalah of BASMALAH_FORMS) {
+                                          if (text.startsWith(basmalah)) {
+                                              text = text.substring(basmalah.length);
+                                              break; // إنهاء حلقة البحث بمجرد القص
+                                          }
+                                      }
+                                  }
+                                  extractedAyahs.push(text);
                                } else {
-                                  Object.values(obj).forEach(extractQuranText);
+                                  // الغوص في الكائنات الداخلية مع توريث رقم السورة المكتشف
+                                  Object.values(obj).forEach(val => extractQuranText(val, currentSurah));
                                }
                              }
                            };
@@ -1960,9 +2023,8 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                            extractQuranText(jsonData);
                            
                            if (extractedAyahs.length > 0) {
-                              // دمج الآيات بفواصل أسطر لحماية المتصفح من الانهيار
                               setVerifyText(extractedAyahs.join('\n'));
-                              setTimeout(() => alert('✅ تم استخراج النص القرآني بنجاح وتجاهل البيانات الوصفية.'), 100);
+                              setTimeout(() => alert('✅ تم استخراج نص الـ JSON وتفريغه من البسملات الزائدة (عدا الفاتحة) بنجاح!'), 100);
                            } else {
                               alert('❌ لم يتم العثور على نص عربي داخل ملف الـ JSON. تأكد من هيكل الملف.');
                               setVerifyText('');
@@ -1973,9 +2035,37 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                            setVerifyText(''); 
                          }
                        } else {
-                         // للملفات العادية
-                         setVerifyText(content);
-                       }
+                           // للملفات العادية (txt)
+                           // 🟢 التعرف التلقائي على صيغة موقع "تنزيل" وتنظيفها قبل المطابقة
+                           if (content.includes('|') && /^\d+\|\d+\|/.test(content.trim())) {
+                               const lines = content.split('\n');
+                               let extractedAyahs = [];
+                               const BASMALAH = "بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ ";
+                               
+                               for (let line of lines) {
+                                   line = line.trim();
+                                   if (!line) continue;
+                                   const parts = line.split('|');
+                                   if (parts.length >= 3) {
+                                       const surahNum = parseInt(parts[0], 10);
+                                       const ayahNum = parseInt(parts[1], 10);
+                                       let text = parts.slice(2).join('|'); 
+                                       
+                                       // قص البسملة من أول كل سورة (ما عدا الفاتحة)
+                                       if (surahNum !== 1 && ayahNum === 1 && text.startsWith(BASMALAH)) {
+                                           text = text.substring(BASMALAH.length);
+                                       }
+                                       extractedAyahs.push(text);
+                                   }
+                               }
+                               // دمج النص النظيف فقط
+                               setVerifyText(extractedAyahs.join('\n'));
+                               setTimeout(() => alert('✅ تم التعرف على ملف "تنزيل" وتجريده من البسملات الزائدة والأرقام بنجاح!'), 100);
+                           } else {
+                               // أي نص عادي آخر
+                               setVerifyText(content);
+                           }
+                         }
                      };
                      reader.readAsText(file, 'UTF-8');
                      e.target.value = ''; 
@@ -2004,10 +2094,16 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                }}
              />
              
-             <div style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
+<div style={{ display: 'flex', gap: '15px', marginTop: '15px' }}>
                <button onClick={handleVerifyText} style={{ flex: 1, padding: '12px', background: '#34495e', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', boxShadow: '0 4px 6px rgba(44, 62, 80, 0.3)' }}>
                  فحص ومطابقة النص 🔍
                </button>
+               
+               {/* 🟢 زر القص السريع للبسملة للنصوص المنسوخة يدوياً */}
+               <button onClick={() => setVerifyText(prev => prev.replace(/^بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ\s*/, '').replace(/^بسم الله الرحمن الرحيم\s*/, ''))} style={{ padding: '12px 20px', background: '#f39c12', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', boxShadow: '0 4px 6px rgba(243, 156, 18, 0.3)' }}>
+                 قص البسملة ✂️
+               </button>
+
                <button onClick={() => { setVerifyText(''); setVerifyResult(null); }} style={{ padding: '12px 25px', background: '#e74c3c', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', boxShadow: '0 4px 6px rgba(231, 76, 60, 0.3)' }}>
                  مسح الحقل 🗑️
                </button>
@@ -2015,7 +2111,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
           </div>
 
 {verifyResult && (
-             <div style={{ background: verifyResult.isMatch ? '#e8f8f5' : '#fdedec', border: `2px solid ${verifyResult.isMatch ? '#2ecc71' : '#e74c3c'}`, borderRadius: '8px', padding: '20px', textAlign: 'center', animation: 'fadeIn 0.5s' }}>
+             <div id="verify-result-box" style={{ background: verifyResult.isMatch ? '#e8f8f5' : '#fdedec', border: `2px solid ${verifyResult.isMatch ? '#2ecc71' : '#e74c3c'}`, borderRadius: '8px', padding: '20px', textAlign: 'center', animation: 'fadeIn 0.5s' }}>
                 <div style={{ fontSize: '60px', marginBottom: '10px' }}>{verifyResult.isMatch ? '✅' : '❌'}</div>
                 <h3 style={{ color: verifyResult.isMatch ? '#27ae60' : '#c0392b', margin: '0 0 20px 0', fontSize: '24px' }}>
                    {verifyResult.isMatch ? 'تطابق تام! النص موثق وسليم 100%' : 'فشل المطابقة! تم اكتشاف اختلاف أو تحريف في النص'}
