@@ -1735,76 +1735,72 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                     const texts = labOutputData.plotData.text;
                     const pointColors = labOutputData.plotData.colors;
                     
-                    const traces = [];
+                    // 🟢 السر هنا: مصفوفات تجميعية (لإنشاء طبقتين فقط لكل السورة بدلاً من مئات الطبقات)
+                    const mesh_x = [], mesh_y = [], mesh_z = [];
+                    const mesh_i = [], mesh_j = [], mesh_k = [], mesh_facecolor = [];
+                    
+                    const scatter_x = [], scatter_y = [], scatter_z = [];
+                    const scatter_text = [], scatter_colors = [], scatter_line_colors = [];
+
                     let currentAyah = null;
-                    let trace_x = [];
-                    let trace_y = [];
-                    let trace_z = [];
-                    let trace_text = [];
-                    let trace_colors = [];
+                    let trace_x = [], trace_y = [], trace_z = [], trace_text = [], trace_colors = [];
                     let wordDepth = 1;
+                    let vertex_offset = 0; // متتبع العقد لربط الستائر برمجياً
                     
                     const totalAyahs = Math.max(...ayahs);
 
                     for (let i = 0; i <= ayahs.length; i++) {
                       if (i === ayahs.length || (currentAyah !== null && ayahs[i] !== currentAyah)) {
                         
-                        const hue = (currentAyah / totalAyahs) * 300; 
-                        const baseColor = `hsl(${hue}, 80%, 50%)`; 
-                        const lineColor = `hsla(${hue}, 90%, 65%, 0.9)`;
-
                         const n = trace_x.length;
-
                         if (n > 0) {
-                            // 🟢 استعادة السحر الهندسي: إمالة السطح بمقدار 0.01 لمنع انهيار WebGL 
-                            let x_bottom = trace_x.map(x => x - 0.01);
-                            let x_top    = trace_x.map(x => x + 0.01);
-                            let y_arr    = [...trace_y];
-                            let z_arr    = [...trace_z];
+                            const hue = (currentAyah / totalAyahs) * 300; 
+                            const baseColor = `hsla(${hue}, 80%, 50%, 0.35)`; 
+                            const lineColor = `hsla(${hue}, 90%, 65%, 0.9)`;
+
+                            // --- 1. بناء الستارة الشاملة (Mesh3D) ---
+                            let m_x = [...trace_x], m_y = [...trace_y], m_z = [...trace_z];
+                            let m_n = n;
                             
-                            // معالجة الآية ذات الكلمة الواحدة
+                            // حل سحري لآية الكلمة الواحدة (نعطيها عرضاً وهمياً لمنع اختفائها)
                             if (n === 1) {
-                                x_bottom.push(x_bottom[0]);
-                                x_top.push(x_top[0]);
-                                y_arr.push(y_arr[0] + 0.1);
-                                z_arr.push(z_arr[0]);
+                                m_x.push(m_x[0]);
+                                m_y.push(m_y[0] + 0.5); 
+                                m_z.push(m_z[0]);
+                                m_n = 2;
                             }
 
-                            // 1. رسم الستارة (Surface)
-                            traces.push({
-                              type: 'surface',
-                              x: [x_bottom, x_top],
-                              y: [y_arr, y_arr],
-                              z: [Array(x_bottom.length).fill(0), z_arr],
-                              colorscale: [[0, baseColor], [1, baseColor]],
-                              opacity: 0.35,
-                              showscale: false,
-                              hoverinfo: 'skip',
-                              contours: { x: { show: false }, y: { show: false }, z: { show: false } }
-                            });
+                            // تجميع الإحداثيات العليا والسفلى
+                            mesh_x.push(...m_x, ...m_x);
+                            mesh_y.push(...m_y, ...m_y);
+                            mesh_z.push(...m_z, ...Array(m_n).fill(0));
 
-                            // 2. رسم مسار الكلمات (Scatter3D)
-                            traces.push({
-                              type: 'scatter3d',
-                              mode: 'lines+markers',
-                              x: trace_x,
-                              y: trace_y,
-                              z: trace_z,
-                              text: trace_text,
-                              hoverinfo: 'text',
-                              marker: { size: 4, color: trace_colors, line: { color: '#fff', width: 0.5 } },
-                              line: { color: lineColor, width: 3 },
-                              showlegend: false
-                            });
+                            // حساب المثلثات الهندسية للستارة
+                            for (let v = 0; v < m_n - 1; v++) {
+                                mesh_i.push(vertex_offset + v);
+                                mesh_j.push(vertex_offset + v + m_n);
+                                mesh_k.push(vertex_offset + v + 1);
+                                mesh_facecolor.push(baseColor);
+
+                                mesh_i.push(vertex_offset + v + m_n);
+                                mesh_j.push(vertex_offset + v + m_n + 1);
+                                mesh_k.push(vertex_offset + v + 1);
+                                mesh_facecolor.push(baseColor);
+                            }
+                            vertex_offset += (m_n * 2);
+
+                            // --- 2. بناء مسار الكلمات الشامل (Scatter3D) ---
+                            scatter_x.push(...trace_x, null); // 🟢 استخدام null يكسر الخط بين الآيات
+                            scatter_y.push(...trace_y, null);
+                            scatter_z.push(...trace_z, null);
+                            scatter_text.push(...trace_text, '');
+                            scatter_colors.push(...trace_colors, 'transparent');
+                            scatter_line_colors.push(...Array(n).fill(lineColor), 'transparent');
                         }
 
                         if (i === ayahs.length) break;
                         
-                        trace_x = [];
-                        trace_y = [];
-                        trace_z = [];
-                        trace_text = [];
-                        trace_colors = [];
+                        trace_x = []; trace_y = []; trace_z = []; trace_text = []; trace_colors = [];
                         wordDepth = 1;
                       }
                       
@@ -1818,7 +1814,27 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                       wordDepth++;
                     }
 
-                    return traces;
+                    // إرجاع طبقتين (Traces) فقط مهما كان طول السورة!
+                    return [
+                        {
+                            type: 'mesh3d',
+                            x: mesh_x, y: mesh_y, z: mesh_z,
+                            i: mesh_i, j: mesh_j, k: mesh_k,
+                            facecolor: mesh_facecolor,
+                            hoverinfo: 'skip',
+                            opacity: 1 
+                        },
+                        {
+                            type: 'scatter3d',
+                            mode: 'lines+markers',
+                            x: scatter_x, y: scatter_y, z: scatter_z,
+                            text: scatter_text,
+                            hoverinfo: 'text',
+                            marker: { size: 4, color: scatter_colors, line: { color: '#fff', width: 0.5 } },
+                            line: { color: scatter_line_colors, width: 3 },
+                            showlegend: false
+                        }
+                    ];
                   })()}
                   layout={{ 
                     title: { text: 'الستائر الطوبوغرافية (العمق الدقيق للآيات)', font: { color: '#ecf0f1', family: '"Amiri Quran", Arial', size: 22 } }, 
@@ -1829,13 +1845,11 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                        xaxis: { title: labSettings.scope === 'quran' ? 'السور' : 'الآيات', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' }, 
                        yaxis: { title: 'العمق (الكلمات)', backgroundcolor: '#34495e', showbackground: true, gridcolor: '#4b6584' }, 
                        zaxis: { title: 'القيمة العددية', backgroundcolor: '#2c3e50', showbackground: true, gridcolor: '#4b6584' },
-                       // 🟢 صندوق التروس الديناميكي: 1 للفاتحة (مكعب)، ويمتد ناعماً للسور الطويلة كـ الرحمن (بحد أقصى 3)
                        aspectratio: { 
                          x: labSettings.scope === 'quran' ? 2.5 : Math.max(1, Math.min(3, Math.max(...labOutputData.plotData.z) / 20)), 
                          y: 1, 
                          z: 0.7 
                        }, 
-                       // 🟢 إعادة كاميرا المنظور الطبيعية (الواقعية) مع إبعادها قليلاً لتتضح الصورة
                        camera: { eye: { x: -1.5, y: -1.5, z: 0.5 } }
                     },
                     margin: { l: 0, r: 0, t: 50, b: 0 },
