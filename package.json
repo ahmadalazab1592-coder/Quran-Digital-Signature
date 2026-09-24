@@ -13,6 +13,7 @@
     "@vercel/analytics": "^2.0.1",
     "dexie": "^4.4.5",
     "dexie-react-hooks": "^4.4.0",
+    "html2canvas": "^1.4.1",
     "plotly.js": "^4.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

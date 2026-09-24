@@ -7,6 +7,7 @@ import Plot from 'react-plotly.js';
 import { Analytics } from '@vercel/analytics/react';
 import './App.css';
 import { quranData as tanzilData } from './db/QuranTanzilDB.js';
+import html2canvas from 'html2canvas';
 
 const nonConnectingLeftChars = ['ا', 'أ', 'إ', 'آ', 'ٱ', 'د', 'ذ', 'ر', 'ز', 'و', 'ؤ', 'ة', 'ء'];
 
@@ -89,24 +90,90 @@ const [labSettings, setLabSettings] = useState({
 // 🟢 متغيرات مرصد مواقع النجوم (المقارن المتعدد)
   const [trackedStars, setTrackedStars] = useState([]);
   const [isTrackerVisible, setIsTrackerVisible] = useState(false);
+// 🟢 دالة تصدير ملخص المرصد كصورة عالية الدقة (بدون الجداول الطويلة)
+  const exportTrackerAsImage = async () => {
+    const element = document.getElementById('tracker-export-area');
+    if (!element) return;
+    try {
+      // 1. إخفاء الجداول التفصيلية مؤقتاً لتجنب الصورة العملاقة
+      const tables = document.querySelectorAll('.tracker-table-for-export');
+      tables.forEach(t => t.style.display = 'none');
 
-// 🟢 محرك مرصد النجوم (النسخة المعيارية الشاملة)
-  const openStarTracker = (targetWord, compositeIds, addToComparison = false) => {
+      // 2. إصلاح مشكلة قص الشاشة (Scroll Fix)
+      const originalOverflow = element.style.overflowY;
+      const originalHeight = element.style.height;
+      element.style.overflowY = 'visible';
+      element.style.height = 'auto';
+
+      const canvas = await html2canvas(element, { 
+        backgroundColor: '#ecf0f1', 
+        scale: 2, 
+        useCORS: true,
+        scrollY: -window.scrollY // لضمان التقاط الشاشة من الأعلى
+      });
+      
+      const dataURL = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = dataURL;
+      link.download = `ملخص_المرصد_${trackedStars.map(s => s.word).join('_')}.png`;
+      link.click();
+
+      // 3. إعادة إظهار الجداول وإرجاع إعدادات التمرير كما كانت
+      tables.forEach(t => t.style.display = 'block');
+      element.style.overflowY = originalOverflow;
+      element.style.height = originalHeight;
+    } catch (err) {
+      console.error("Export Error:", err);
+      alert("حدث خطأ أثناء التقاط الصورة.");
+    }
+  };
+
+  // 🟢 دالة تصدير بيانات المرصد كملف إكسيل (CSV)
+  const exportTrackerAsCSV = () => {
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; 
+    csvContent += "النجم (الكلمة),الرقم,الكلمة الفعلية,السورة,الآية,الموقع المطلق,المسافة البينية\n";
+
+    trackedStars.forEach(star => {
+      star.occurrences.forEach((occ, idx) => {
+        const distance = idx === 0 ? 0 : star.distances[idx - 1];
+        csvContent += `"${star.word}",${idx + 1},"${occ.actualWordFound || star.word}","${occ.surahName}",${occ.ayahNum},${occ.globalPos},${distance}\n`;
+      });
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `بيانات_المرصد_${trackedStars.map(s => s.word).join('_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // 🟢 متغيرات لوحة تحكم إطلاق المرصد
+  const [preLaunchModalOpen, setPreLaunchModalOpen] = useState(false);
+  const [preLaunchWord, setPreLaunchWord] = useState('');
+  const [preLaunchCompositeIds, setPreLaunchCompositeIds] = useState([]);
+  const [trackerScope, setTrackerScope] = useState('quran'); // quran أو surah
+  const [trackerMatchType, setTrackerMatchType] = useState('flexible'); // strict أو flexible
+
+// 🟢 محرك مرصد النجوم (مُحدث ليدعم النطاقات والبحث الجذري المرن)
+  const executeStarTrackerLaunch = (addToComparison = false) => {
     
-    // 🟢 دالة التوحيد المعياري: تجرد الكلمة من كل الزوائد لضمان اصطيادها في كل مواضعها
+    // 🟢 دالة التجريد القاسية (تجريد النص بالكامل)
     const normalizeForSearch = (str) => {
        if (!str) return '';
-       return str.replace(/[\u064B-\u065F\u0670\u0640]/g, '') // إزالة التشكيل، الألف الخنجرية، والتطويل
-                 .replace(/[ٱأإآ]/g, 'ا') // توحيد كل أنواع الألف إلى ألف عادية
-                 .replace(/[ىي]/g, 'ي')   // توحيد الياء
-                 .replace(/ة/g, 'ه');     // توحيد التاء المربوطة
+       return str.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u0640]/g, '')
+                 .replace(/[أإآٱ]/g, 'ا')
+                 .replace(/[ىئؤء]/g, 'ي')
+                 .replace(/ة/g, 'ه');
     };
 
-    // تنظيف وتوحيد الكلمة المستهدفة
+    const targetWord = preLaunchWord;
+    const compositeIds = preLaunchCompositeIds;
     const rawClean = cleanQuranText(targetWord);
     const searchTarget = normalizeForSearch(rawClean);
-    
-    // 1. حساب القيم
+
+    // حساب القيم
     const getVal = (id, base) => {
        const fp = globalFingerprints.find(g => g.compositeId === id);
        if(!fp) return 0;
@@ -120,23 +187,48 @@ const [labSettings, setLabSettings] = useState({
     const valSpatial = compositeIds.reduce((sum, id) => sum + getVal(id, 'spatial'), 0);
     const valComposite = compositeIds.reduce((sum, id) => sum + getVal(id, 'composite'), 0);
 
-    // 2. مسح المصحف بالرادار المعياري
     let occurrences = [];
     let globalWordIndex = 0;
     let sumOfPositions = 0;
     let firstAppearance = null;
 
-    quranData.forEach(surah => {
+    // تحديد نطاق البحث
+    const targetSurahs = trackerScope === 'quran' ? quranData : [currentSurah];
+
+    targetSurahs.forEach(surah => {
        surah.ayahs.forEach(ayah => {
-          const words = cleanQuranText(ayah.text).split(/\s+/).filter(w => w.trim());
+          // استخدام stripPunctuation الدقيق الذي أنشأناه مسبقاً
+          const strippedAyah = ayah.text.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-\|\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u06DE\u06E9]/g, ' ');
+          const words = strippedAyah.split(/\s+/).filter(w => w.trim());
+          
           words.forEach(w => {
              globalWordIndex++;
-             // 🟢 مقارنة الكلمة بعد توحيدها معيارياً
-             if (normalizeForSearch(w) === searchTarget) {
+             const normalizedCurrentWord = normalizeForSearch(w);
+             
+             let isMatchFound = false;
+
+             if (trackerMatchType === 'strict') {
+                 // مطابقة صارمة للهيكل العظمي
+                 isMatchFound = normalizedCurrentWord === searchTarget;
+             } else {
+                 // 🟢 مطابقة مرنة (بحث جذري يتخطى السوابق واللواحق)
+                 // السوابق الشائعة: و، ف، ب، ك، ل، ال
+                 // اللواحق الشائعة: ه، ها، هم، هن، كم، كن، نا، ا
+                 
+                 // هل الكلمة الحالية تتضمن جذر الكلمة المستهدفة؟
+                 if (normalizedCurrentWord.includes(searchTarget)) {
+                    // اختبار بسيط: هل الجزء المتبقي من الكلمة هو مجرد سوابق أو لواحق معروفة؟
+                    const regex = new (window.RegExp)(`^(و|ف|ب|ك|ل|ال)*${searchTarget}(ه|ها|هم|هن|كم|كن|نا|ا)*$`);
+                    isMatchFound = regex.test(normalizedCurrentWord);
+                 }
+             }
+
+             if (isMatchFound) {
                 occurrences.push({
                    surahName: surah.name,
                    ayahNum: ayah.number,
-                   globalPos: globalWordIndex
+                   globalPos: globalWordIndex,
+                   actualWordFound: w // حفظ الكلمة الفعلية التي تم اصطيادها
                 });
                 sumOfPositions += globalWordIndex;
                 if (!firstAppearance) firstAppearance = globalWordIndex;
@@ -151,21 +243,25 @@ const [labSettings, setLabSettings] = useState({
     }
 
     const specialProduct = firstAppearance ? (firstAppearance * valSpatial) : 0;
+    
+    // تعديل اسم النجم ليعكس طريقة البحث
+    const displayWordName = trackerMatchType === 'flexible' ? `*${targetWord}*` : targetWord;
 
     const newStar = {
-       word: targetWord, count: occurrences.length, occurrences, distances,
+       word: displayWordName, count: occurrences.length, occurrences, distances,
        valSequential, valSpatial, valComposite, sumOfPositions, firstAppearance, specialProduct
     };
 
     if (addToComparison) {
        setTrackedStars(prev => {
-          if(prev.find(s => s.word === targetWord)) return prev;
+          if(prev.find(s => s.word === displayWordName)) return prev;
           return [...prev, newStar];
        });
     } else {
        setTrackedStars([newStar]);
     }
     
+    setPreLaunchModalOpen(false);
     setIsTrackerVisible(true);
   };
 
@@ -490,12 +586,14 @@ const normalizeForSearch = (text) => {
     let dbTokensDetailed = [];
     let dbWordsArray = [];
 
-   // منظف النصوص العام (لتجريد الأرقام، الزخارف، وكافة علامات الوقف والأحزاب والسجدات القرآنية)
+   // منظف النصوص العام (المطور لمنع انشطار الكلمات)
     const stripPunctuation = (str) => {
        if (!str) return '';
-       return str.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-\|\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u06DE\u06E9]/g, ' ');
+       let s = str.replace(/[0-9٠-٩\{\}\(\)\[\]،.؛:"'«»\-\|۩۞\u06DE\u06E9]/g, ' ');
+       s = s.replace(/[\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED]/g, '');
+       return s;
     };
-    // دالة لتجهيز كلمات الآيات بدقة وإعطاء كل كلمة بطاقة تعريفية
+    
     const processSurah = (surah) => {
        surah.ayahs.forEach(a => {
           const words = stripPunctuation(a.text).split(/\s+/).filter(w => w.trim());
@@ -526,22 +624,15 @@ const normalizeForSearch = (text) => {
 
     const inputWordsArray = stripPunctuation(verifyText).split(/\s+/).filter(w => w.trim());
 
-// 🟢 دالة التجريد القاسية المخصصة للوضع المرن فقط
     const normalizeForFlexibleMatch = (word) => {
       if (!word) return '';
       return word
-        // 1. إزالة التشكيل، علامات الوقف، والمدة، والتطويل (الكشيدة: ـ)
-        .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u0640]/g, '') // 👈 تم إضافة \u0640 هنا
-        // 2. توحيد كافة أشكال الألف (آ، أ، إ، ٱ) إلى ألف حافية (ا)
-        .replace(/[أإآٱ]/g, 'ا') // 👈 تم إضافة ٱ (همزة الوصل) هنا
-        // 3. إزالة الهمزة العائمة (ء) تماماً لتخطي موقعها
+        .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u0640]/g, '')
+        .replace(/[أإآٱ]/g, 'ا')
         .replace(/ء/g, '')
-        // 4. تحويل كراسي الهمزة لحروفها الأساسية (ئ -> ي، ؤ -> و)
         .replace(/ئ/g, 'ي')
         .replace(/ؤ/g, 'و')
-        // 5. توحيد الألف المقصورة والياء
         .replace(/[ى]/g, 'ي')
-        // 6. توحيد التاء المربوطة والهاء
         .replace(/ة/g, 'ه');
     };
 
@@ -555,7 +646,6 @@ const normalizeForSearch = (text) => {
            const origMeta = dbTokensDetailed[i];
            const inpWordStr = inputWordsArray[i];
 
-           // 🟢 استخدام دالة التجريد القاسية الجديدة بدلاً من normalizeForSearch
            const wOriginal = origWordStr ? normalizeForFlexibleMatch(origWordStr) : null;
            const wInput = inpWordStr ? normalizeForFlexibleMatch(inpWordStr) : null;
            
@@ -563,12 +653,12 @@ const normalizeForSearch = (text) => {
                isMatch = false;
                mismatchInfo = {
                    index: i + 1,
+                   inpIndex: i, // الفهرس التقريبي
                    surahName: origMeta ? origMeta.surahName : 'غير محدد (ربما نهاية المرجع)',
                    surahId: origMeta ? origMeta.surahId : null,
                    ayahNum: origMeta ? origMeta.ayahNum : '-',
                    wordInAyah: origMeta ? origMeta.wordInAyah : '-',
                    origWord: origWordStr || '(نقص في النص)',
-                   // 🟢 عرض الهيكل المجرد للكلمة لتسهيل فحص سبب الانهيار
                    origVal: `المجرد: ${wOriginal || 'فارغ'}`, 
                    inpWord: inpWordStr || '(إضافة غريبة)',
                    inpVal: `المجرد: ${wInput || 'فارغ'}`
@@ -582,10 +672,18 @@ const normalizeForSearch = (text) => {
           inputData: { signature: 'FLEX-MODE-NO-HASH', totalItems: inputWordsArray.length, totalValue: 'N/A' }, 
           surahName: targetName, mismatchInfo 
        });
+       
+       let scrollAttempts = 0;
+       const tryScroll = () => {
+          const resultBox = document.getElementById('verify-result-box');
+          if (resultBox) { resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
+          else if (scrollAttempts < 15) { scrollAttempts++; setTimeout(tryScroll, 100); }
+       };
+       tryScroll();
        return;
     }
 
-    // 🟢 فرع المطابقة الصارمة
+    // 🟢 فرع المطابقة الصارمة (سليم 100% بفضل الله)
     const getLetterVal = (compositeId) => {
        const fp = globalFingerprints.find(g => g.compositeId === compositeId);
        if (!fp) return 0;
@@ -601,7 +699,6 @@ const normalizeForSearch = (text) => {
        let tokens = [];
 
        wordsArray.forEach((rawWord, origIndex) => {
-          // نمرر الكلمة على دالة التنظيف الصارمة
           const cleanedWordText = cleanQuranText(rawWord);
           const subWords = cleanedWordText.split(/\s+/).filter(w => w.trim());
           
@@ -707,7 +804,6 @@ const normalizeForSearch = (text) => {
               if (wordValueSum > 0) {
                  totalValue += wordValueSum;
                  totalItems++;
-                 // 🟢 السر التقني هنا: نمرر الفهرس الأصلي للكلمة ليرتبط بها كبطاقة هوية
                  tokens.push({ word, value: wordValueSum, origIndex: origIndex });
               }
           });
@@ -730,12 +826,12 @@ const normalizeForSearch = (text) => {
           const inp = inputData.tokens[i];
           
           if (!orig || !inp || orig.value !== inp.value || orig.word !== inp.word) {
-             
-             // 🟢 استخراج هوية الكلمة بناءً على الفهرس المحفوظ، مهما كانت كمية الكلمات المحذوفة
              const origMeta = orig ? dbTokensDetailed[orig.origIndex] : null;
+             const inpIndex = inp ? inp.origIndex : (inputWordsArray.length > i ? i : inputWordsArray.length - 1);
              
              mismatchInfo = {
-                index: i + 1, // رقم الكلمة الفعلي المقروء بالرادار
+                index: i + 1, 
+                inpIndex: inpIndex, // الفهرس التقريبي
                 surahName: origMeta ? origMeta.surahName : 'غير محدد',
                 surahId: origMeta ? origMeta.surahId : null,
                 ayahNum: origMeta ? origMeta.ayahNum : '-',
@@ -752,13 +848,41 @@ const normalizeForSearch = (text) => {
 
     setVerifyResult({ isMatch, originalData, inputData, surahName: targetName, mismatchInfo });
     
-    // 🟢 التمرير التلقائي الانسيابي لأسفل لرؤية النتيجة
-    setTimeout(() => {
+    let scrollAttempts = 0;
+    const tryScroll = () => {
        const resultBox = document.getElementById('verify-result-box');
-       if (resultBox) {
-          resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' });
-       }
-    }, 150);
+       if (resultBox) { resultBox.scrollIntoView({ behavior: 'smooth', block: 'start' }); } 
+       else if (scrollAttempts < 15) { scrollAttempts++; setTimeout(tryScroll, 100); }
+    };
+    tryScroll();
+  };
+
+  // 🟢 دوال التصدير والحفظ (TXT و JSON)
+  const exportAsTXT = () => {
+    if (!verifyText.trim()) { alert('لا يوجد نص لحفظه!'); return; }
+    const blob = new Blob([verifyText], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `النص_المصحح_${new Date().toISOString().slice(0,10)}.txt`;
+    link.click();
+  };
+
+  const exportAsJSON = () => {
+    if (!verifyText.trim()) { alert('لا يوجد نص لحفظه!'); return; }
+    const dataToSave = {
+        documentInfo: "وثيقة معتمدة من منصة البصمة الرقمية للقرآن",
+        exportDate: new Date().toISOString(),
+        verificationMode: verifyMode,
+        signature: verifyResult?.inputData?.signature || "غير متوفر (لم يتم الفحص بعد)",
+        totalWords: verifyResult?.inputData?.totalItems || 0,
+        totalValue: verifyResult?.inputData?.totalValue || 0,
+        textContent: verifyText
+    };
+    const blob = new Blob([JSON.stringify(dataToSave, null, 2)], { type: 'application/json;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `وثيقة_البصمة_${new Date().toISOString().slice(0,10)}.json`;
+    link.click();
   };
 
 const executeLabAnalysis = () => {
@@ -1336,7 +1460,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
       
       extractedWordsData.push({ key: wordKey, text: word, ayah: ayah.number, wIdx, compositeIds: currentWordCompositeIds });
       
-      return (
+return (
          <span 
             key={`word-${wIdx}`} 
             onClick={(e) => {
@@ -1350,12 +1474,9 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
             onContextMenu={(e) => {
                e.preventDefault();
                e.stopPropagation();
-               if (trackedStars.length > 0) {
-                   const wantCompare = window.confirm(`المرصد يحتفظ حالياً ببيانات (${trackedStars.map(s => s.word).join('، ')}).\n\nهل تريد إضافة [ ${word} ] للمقارنة معهم على نفس المخطط؟\n\n- اضغط (OK / موافق) للإضافة.\n- اضغط (Cancel / إلغاء) لمسح المرصد وبدء رصد هذه الكلمة وحدها.`);
-                   openStarTracker(word, currentWordCompositeIds, wantCompare);
-               } else {
-                   openStarTracker(word, currentWordCompositeIds, false);
-               }
+               setPreLaunchWord(word);
+               setPreLaunchCompositeIds(currentWordCompositeIds);
+               setPreLaunchModalOpen(true);
             }}
             style={interactionMode === 'analyze' ? {
                backgroundColor: isWordSelected ? 'rgba(230, 126, 34, 0.2)' : 'transparent',
@@ -1363,10 +1484,11 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                borderRadius: '4px',
                cursor: 'pointer',
                transition: 'all 0.2s',
-               display: 'inline',
+               display: 'inline-block',
                lineHeight: '1.8'
             } : { cursor: 'context-menu', display: 'inline' }}
-            title="كليك يمين لفتح مرصد النجوم لهذه الكلمة 🔭"
+            className={interactionMode === 'analyze' ? "hover-pulse-word" : ""}
+            title={interactionMode === 'analyze' ? "يسار: للتحديد والإحصاء | يمين: لإطلاق المرصد الفلكي 🔭" : ""}
          >
             {elements}
          </span>
@@ -1924,14 +2046,14 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
 <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>النطاق المُراد المطابقة معه:</label>
-                  <select value={verifySurahId} onChange={(e) => setVerifySurahId(Number(e.target.value))} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'inherit', fontSize: '15px' }}>
+                  <select value={verifySurahId} onChange={(e) => { setVerifySurahId(Number(e.target.value)); setVerifyResult(null); }} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'inherit', fontSize: '15px' }}>
                     <option value={0} style={{ fontWeight: 'bold', color: '#8e44ad' }}>📖 المصحف كاملاً (كل السور)</option>
                     {quranData.map(s => <option key={s.id} value={s.id}>{s.id}. سورة {s.name}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>معيار التشفير:</label>
-                  <select value={verifyNumBase} onChange={(e) => setVerifyNumBase(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'inherit', fontSize: '15px' }}>
+                  <select value={verifyNumBase} onChange={(e) => { setVerifyNumBase(e.target.value); setVerifyResult(null); }} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'inherit', fontSize: '15px' }}>
                     <option value="sequential">الرتبة التسلسلية للاكتشاف</option>
                     <option value="spatial">الموقع المكاني</option>
                     <option value="composite">البصمة المركبة</option>
@@ -1940,7 +2062,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                 {/* 🟢 القائمة الجديدة لتحديد مستوى الصرامة */}
                 <div style={{ flex: 1 }}>
                   <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>مستوى المطابقة:</label>
-                  <select value={verifyMode} onChange={(e) => setVerifyMode(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'inherit', fontSize: '15px' }}>
+                  <select value={verifyMode} onChange={(e) => { setVerifyMode(e.target.value); setVerifyResult(null); }} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontFamily: 'inherit', fontSize: '15px' }}>
                     <option value="strict">صارم (الرسم العثماني المشفر)</option>
                     <option value="flexible">مرن (النص الإملائي المجرد)</option>
                   </select>
@@ -2074,19 +2196,20 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                </label>
              </div>
 
-             {/* 🟢 مربع النص المجهز لتحمل النصوص العملاقة */}
-             <textarea 
+{/* 🟢 مربع النص المجهز لتحمل النصوص العملاقة */}
+              <textarea 
+               id="verify-text-input"
                value={verifyText} 
-               onChange={(e) => setVerifyText(e.target.value)}
+               onChange={(e) => { setVerifyText(e.target.value); setVerifyResult(null); }}
                placeholder="الصق النص هنا، أو استخدم زر الرفع بالأعلى..."
-               spellCheck="false" // إيقاف المدقق الإملائي لمنع الشلل
+               spellCheck="false" 
                style={{ 
                  width: '100%', 
                  height: '150px', 
                  padding: '15px', 
                  borderRadius: '6px', 
                  border: '1px solid #ccc', 
-                 fontFamily: 'Arial, Tahoma, sans-serif', // خط نظام خفيف جداً
+                 fontFamily: 'Arial, Tahoma, sans-serif', 
                  fontSize: '18px', 
                  lineHeight: '1.8',
                  resize: 'vertical', 
@@ -2099,7 +2222,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                  فحص ومطابقة النص 🔍
                </button>
                
-               {/* 🟢 زر القص السريع للبسملة للنصوص المنسوخة يدوياً */}
+{/* 🟢 زر القص السريع للبسملة للنصوص المنسوخة يدوياً */}
                <button onClick={() => setVerifyText(prev => prev.replace(/^بِسْمِ ٱللَّهِ ٱلرَّحْمَـٰنِ ٱلرَّحِيمِ\s*/, '').replace(/^بسم الله الرحمن الرحيم\s*/, ''))} style={{ padding: '12px 20px', background: '#f39c12', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', boxShadow: '0 4px 6px rgba(243, 156, 18, 0.3)' }}>
                  قص البسملة ✂️
                </button>
@@ -2107,6 +2230,57 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                <button onClick={() => { setVerifyText(''); setVerifyResult(null); }} style={{ padding: '12px 25px', background: '#e74c3c', color: '#fff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', boxShadow: '0 4px 6px rgba(231, 76, 60, 0.3)' }}>
                  مسح الحقل 🗑️
                </button>
+             </div>
+
+             {/* 🟢 أزرار الحفظ والتصدير (بمنطق التفعيل الذكي) */}
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px', paddingTop: '15px', borderTop: '1px dashed #ccc' }}>
+                
+                {(!verifyResult || !verifyResult.isMatch) && (
+                   <div style={{ textAlign: 'center', color: '#7f8c8d', fontSize: '13px', fontWeight: 'bold', marginBottom: '5px' }}>
+                      ⚠️ لن يتم تفعيل أزرار التوثيق والتصدير إلا بعد اجتياز النص للمطابقة بنجاح بنسبة 100%.
+                   </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '15px' }}>
+                   <button 
+                      onClick={exportAsJSON} 
+                      disabled={!verifyResult || !verifyResult.isMatch}
+                      title={(!verifyResult || !verifyResult.isMatch) ? 'يجب مطابقة النص وتصحيح الأخطاء أولاً' : 'تصدير وثيقة المطابقة'}
+                      style={{ 
+                         flex: 1, padding: '12px', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', transition: '0.3s', border: 'none',
+                         background: (verifyResult && verifyResult.isMatch) ? '#8e44ad' : '#bdc3c7', 
+                         color: '#fff', 
+                         cursor: (verifyResult && verifyResult.isMatch) ? 'pointer' : 'not-allowed', 
+                         boxShadow: (verifyResult && verifyResult.isMatch) ? '0 4px 6px rgba(142, 68, 173, 0.3)' : 'none',
+                         opacity: (verifyResult && verifyResult.isMatch) ? 1 : 0.6
+                      }}
+                   >
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                         <span>تصدير كوثيقة موثقة (JSON) 🔐</span>
+                         {verifyResult && verifyResult.isMatch && (
+                            <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '10px' }}>
+                               تمت المطابقة بوضع: {verifyMode === 'strict' ? 'صارم (الرسم العثماني)' : 'مرن (إملائي)'}
+                            </span>
+                         )}
+                      </div>
+                   </button>
+
+                   <button 
+                      onClick={exportAsTXT} 
+                      disabled={!verifyResult || !verifyResult.isMatch}
+                      title={(!verifyResult || !verifyResult.isMatch) ? 'يجب مطابقة النص وتصحيح الأخطاء أولاً' : 'حفظ النص الخام'}
+                      style={{ 
+                         flex: 1, padding: '12px', borderRadius: '6px', fontSize: '16px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', transition: '0.3s', border: 'none',
+                         background: (verifyResult && verifyResult.isMatch) ? '#27ae60' : '#bdc3c7', 
+                         color: '#fff', 
+                         cursor: (verifyResult && verifyResult.isMatch) ? 'pointer' : 'not-allowed', 
+                         boxShadow: (verifyResult && verifyResult.isMatch) ? '0 4px 6px rgba(39, 174, 96, 0.3)' : 'none',
+                         opacity: (verifyResult && verifyResult.isMatch) ? 1 : 0.6
+                      }}
+                   >
+                      حفظ كنص عادي (TXT) 📝
+                   </button>
+                </div>
              </div>
           </div>
 
@@ -2147,8 +2321,28 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                       
 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center', marginBottom: '15px' }}>
                          
-                         {/* صندوق المرجع القرآني */}
-                         <div style={{ flex: '1 1 280px', minWidth: '280px', background: '#f8f9fa', padding: '15px', borderRadius: '6px', border: '1px solid #bdc3c7', textAlign: 'center' }}>
+                         {/* 🟢 صندوق المرجع القرآني (تفاعلي: يقفز للسورة ويضيء الآية) */}
+                         <div 
+                            title="اضغط هنا للقفز إلى الآية في المصحف 📖"
+                            onClick={() => {
+                               if(verifyResult.mismatchInfo.surahId) {
+                                  setViewScope('surah');
+                                  setSelectedSurahId(verifyResult.mismatchInfo.surahId);
+                                  setTimeout(() => {
+                                     const ayahEl = document.getElementById(`ayah-${verifyResult.mismatchInfo.ayahNum}`);
+                                     if (ayahEl) {
+                                        ayahEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        ayahEl.style.transition = 'background-color 0.5s';
+                                        ayahEl.style.backgroundColor = '#f1c40f77'; // إضاءة الآية باللون الأصفر
+                                        setTimeout(() => ayahEl.style.backgroundColor = 'transparent', 3000);
+                                     }
+                                  }, 400); // تأخير بسيط لحين رسم السورة
+                               }
+                            }}
+                            style={{ flex: '1 1 280px', minWidth: '280px', background: '#f8f9fa', padding: '15px', borderRadius: '6px', border: '1px solid #bdc3c7', textAlign: 'center', cursor: 'pointer', transition: '0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'} 
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                         >
                             <div style={{ color: '#7f8c8d', fontSize: '14px', marginBottom: '5px' }}>في المرجع القرآني (الأصلي):</div>
                             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#27ae60', fontFamily: '"Amiri Quran", serif' }}>
                                {verifyResult.mismatchInfo.origWord}
@@ -2156,10 +2350,75 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                             <div style={{ marginTop: '5px', fontSize: '14px', color: '#27ae60', fontWeight: 'bold' }}>
                                قيمة البصمة: {typeof verifyResult.mismatchInfo.origVal === 'number' ? verifyResult.mismatchInfo.origVal.toLocaleString() : verifyResult.mismatchInfo.origVal}
                             </div>
+                            <div style={{ fontSize: '12px', color: '#bdc3c7', marginTop: '8px' }}>👈 اضغط للذهاب للآية</div>
                          </div>
                          
-                         {/* صندوق النص المُحرف */}
-                         <div style={{ flex: '1 1 280px', minWidth: '280px', background: '#fdedec', padding: '15px', borderRadius: '6px', border: '1px solid #e74c3c', textAlign: 'center' }}>
+{/* 🟢 صندوق النص المُحرف (تفاعلي: يظلل الكلمة داخل مربع النص للتعديل) */}
+                         <div 
+                            title="اضغط هنا لتحديد الكلمة الخاطئة في النص وتعديلها ✍️"
+                            onClick={() => {
+                               const textarea = document.getElementById('verify-text-input');
+                               if (textarea) {
+                                  const text = textarea.value;
+                                  
+                                  const targetWord = verifyResult.mismatchInfo.inpWord;
+                                  const targetIdx = verifyResult.mismatchInfo.index - 1; 
+                                  const totalItems = verifyResult.originalData.totalItems;
+                                  
+                                  if (targetWord && targetWord !== '(إضافة غريبة)' && totalItems) {
+                                      // 1. حساب الموضع التقريبي للكلمة
+                                      const ratio = targetIdx / totalItems;
+                                      const approxPosition = ratio * text.length;
+
+                                      const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                      const flexibleWordPattern = Array.from(targetWord).map(char => escapeRegExp(char)).join('[\u064B-\u065F\u0670\u06D6-\u06DC\u06DF-\u06E8\u06EA-\u06ED\u0640]*');
+                                      const regex = new RegExp(flexibleWordPattern, 'g');
+
+                                      let match;
+                                      let bestMatch = null;
+                                      let minDistance = Infinity;
+
+                                      // 2. إيجاد التطابق الجراحي (الذي أثبتت التجربة نجاحه)
+                                      while ((match = regex.exec(text)) !== null) {
+                                          const distance = Math.abs(match.index - approxPosition);
+                                          if (distance < minDistance) {
+                                              minDistance = distance;
+                                              bestMatch = { start: match.index, end: match.index + match[0].length };
+                                          }
+                                      }
+
+                                      if (bestMatch) {
+                                          // 🟢 تنفيذ فكرتك: التخلص من النسخة الكربونية نهائياً!
+                                          // استخدام خدعة "الاقتطاع المؤقت" لقياس الارتفاع الحقيقي
+                                          
+                                          const originalText = textarea.value;
+                                          
+                                          // قص النص مؤقتاً عند نهاية الكلمة الخاطئة
+                                          textarea.value = originalText.substring(0, bestMatch.end);
+                                          
+                                          // قراءة الارتفاع الدقيق من المربع نفسه
+                                          const targetScrollTop = textarea.scrollHeight;
+                                          
+                                          // إعادة النص الأصلي فوراً
+                                          textarea.value = originalText;
+                                          
+                                          // التركيز وتظليل الكلمة
+                                          textarea.focus();
+                                          textarea.setSelectionRange(bestMatch.start, bestMatch.end);
+                                          
+                                          // الانزلاق للارتفاع الذي قرأناه ووضع الكلمة في المنتصف
+                                          textarea.scrollTo({
+                                              top: Math.max(0, targetScrollTop - (textarea.clientHeight / 2)),
+                                              behavior: 'smooth'
+                                          });
+                                      }
+                                  }
+                               }
+                            }}
+                            style={{ flex: '1 1 280px', minWidth: '280px', background: '#fdedec', padding: '15px', borderRadius: '6px', border: '1px solid #e74c3c', textAlign: 'center', cursor: 'pointer', transition: '0.2s', boxShadow: '0 2px 5px rgba(231,76,60,0.1)' }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-3px)'} 
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+                         >
                             <div style={{ color: '#c0392b', fontSize: '14px', marginBottom: '5px' }}>في النص المُدخل (المُحرف):</div>
                             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#c0392b', fontFamily: '"Amiri Quran", serif' }}>
                                {verifyResult.mismatchInfo.inpWord}
@@ -2167,6 +2426,7 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                             <div style={{ marginTop: '5px', fontSize: '14px', color: '#c0392b', fontWeight: 'bold' }}>
                                قيمة البصمة: {typeof verifyResult.mismatchInfo.inpVal === 'number' ? verifyResult.mismatchInfo.inpVal.toLocaleString() : verifyResult.mismatchInfo.inpVal}
                             </div>
+                            <div style={{ fontSize: '12px', color: '#e74c3c', marginTop: '8px', opacity: 0.7 }}>👈 اضغط لتظليل الكلمة وتعديلها</div>
                          </div>
                       </div>
 
@@ -2561,42 +2821,107 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
           </div>
         </div>
       )}
+
+      {/* 🟢 نافذة لوحة تحكم إطلاق المرصد */}
+      {preLaunchModalOpen && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(15, 23, 42, 0.85)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', direction: 'rtl', backdropFilter: 'blur(5px)' }}>
+          <div style={{ background: '#fff', padding: '30px', borderRadius: '12px', width: '500px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', border: '2px solid #3498db' }}>
+            
+            <h2 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px dashed #ecf0f1', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span>🚀</span> إعدادات إطلاق المرصد
+            </h2>
+            
+            <div style={{ textAlign: 'center', margin: '20px 0' }}>
+               <span style={{ fontSize: '18px', color: '#7f8c8d' }}>الكلمة المستهدفة:</span>
+               <div style={{ fontSize: '40px', fontFamily: '"Amiri Quran", serif', color: '#8e44ad', fontWeight: 'bold' }}>{preLaunchWord}</div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>1. نطاق الرصد الفلكي:</label>
+              <select value={trackerScope} onChange={(e) => setTrackerScope(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' }}>
+                <option value="quran">المصحف كاملاً 📖</option>
+                <option value="surah">السورة الحالية فقط 📄</option>
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '25px' }}>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '8px', color: '#2c3e50' }}>2. خوارزمية الاصطياد (المطابقة):</label>
+              <select value={trackerMatchType} onChange={(e) => setTrackerMatchType(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '15px' }}>
+                <option value="flexible">جذرية مرنة (تخطي اللواحق والسوابق مثل: و، ف، هم) 🌟</option>
+                <option value="strict">حرفية صارمة (الكلمة المحددة فقط) 🔒</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {trackedStars.length > 0 && (
+                <button onClick={() => executeStarTrackerLaunch(true)} style={{ padding: '12px', background: '#27ae60', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 6px rgba(39, 174, 96, 0.3)' }}>
+                  إضافة للمقارنة المدمجة (مع النجوم الحالية) ➕
+                </button>
+              )}
+              <button onClick={() => executeStarTrackerLaunch(false)} style={{ padding: '12px', background: '#2980b9', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', boxShadow: '0 4px 6px rgba(41, 128, 185, 0.3)' }}>
+                 {trackedStars.length > 0 ? 'مسح المرصد ورصد هذه الكلمة وحدها 🔭' : 'إطلاق الرادار الفلكي 🔭'}
+              </button>
+              <button onClick={() => setPreLaunchModalOpen(false)} style={{ padding: '12px', background: '#e74c3c', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px', marginTop: '5px' }}>
+                إلغاء ❌
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
       
 {/* 🟢 النافذة العائمة لمرصد مواقع النجوم (متعدد النجوم والمقارنة - بالتصميم الواسع المريح) */}
       {isTrackerVisible && trackedStars.length > 0 && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(15, 23, 42, 0.95)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', direction: 'rtl', backdropFilter: 'blur(8px)' }}>
            <div style={{ background: '#ecf0f1', width: '95%', maxWidth: '1400px', height: '95vh', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '2px solid #3498db' }}>
               
-              {/* شريط العنوان */}
+{/* شريط العنوان وأزرار التصدير */}
               <div style={{ background: '#2c3e50', padding: '15px 25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                  <h2 style={{ margin: 0, color: '#f1c40f', fontFamily: '"Amiri Quran", serif', fontSize: '24px' }}>
-                    🔭 مرصد مواقع النجوم [ مقارنة: {trackedStars.map(s => s.word).join(' vs ')} ]
+                    🔭 مرصد مواقع النجوم [ {trackedStars.map(s => s.word).join(' vs ')} ]
                  </h2>
-                 <div style={{display: 'flex', gap: '15px'}}>
-                    <button onClick={() => setIsTrackerVisible(false)} style={{ background: '#34495e', color: '#fff', border: '1px solid #7f8c8d', borderRadius: '6px', padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold', transition: '0.3s' }}>إخفاء المرصد (لاضافة كلمة)</button>
-                    <button onClick={() => { setTrackedStars([]); setIsTrackerVisible(false); }} style={{ background: '#e74c3c', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold' }}>مسح الكل وإغلاق 🗑️</button>
+                 <div style={{display: 'flex', gap: '10px'}}>
+<button onClick={exportTrackerAsImage} style={{ background: '#8e44ad', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                       تصوير الملخص 📸
+                    </button>
+                    <button onClick={exportTrackerAsCSV} style={{ background: '#27ae60', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                       تصدير التفاصيل (Excel) 📊
+                    </button>
+                    <span style={{ borderLeft: '2px solid #7f8c8d', margin: '0 5px' }}></span>
+<button onClick={() => setIsTrackerVisible(false)} style={{ background: '#34495e', color: '#fff', border: '1px solid #7f8c8d', borderRadius: '6px', padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold', transition: '0.3s' }} onMouseEnter={(e) => e.target.style.background = '#2c3e50'} onMouseLeave={(e) => e.target.style.background = '#34495e'}>
+                       إخفاء مؤقت (لإضافة كلمة للمقارنة) ➕
+                    </button>
+                    <button onClick={() => { setTrackedStars([]); setIsTrackerVisible(false); }} style={{ background: '#e74c3c', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 15px', cursor: 'pointer', fontWeight: 'bold' }}>مسح وإغلاق ❌</button>
                  </div>
               </div>
 
-              {/* المحتوى الداخلي قابل للتمرير */}
-              <div style={{ padding: '25px', overflowY: 'auto', flex: 1 }}>
+{/* المحتوى الداخلي (تم وضع ID هنا لالتقاط الصورة لهذه المنطقة بالتحديد) */}
+              <div id="tracker-export-area" style={{ padding: '25px', overflowY: 'auto', flex: 1, backgroundColor: '#ecf0f1' }}>
                  
                  {/* الرسم البياني المدمج للمقارنة (في الأعلى ليعطي النظرة الشاملة) */}
                  <div style={{ height: '400px', background: '#1e272e', borderRadius: '8px', padding: '15px', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', marginBottom: '35px', border: '2px solid #2c3e50' }}>
-                    <Plot
+<Plot
                       data={trackedStars.map((star, idx) => {
                         const cosmicColors = ['#f1c40f', '#3498db', '#e74c3c', '#2ecc71', '#9b59b6', '#e67e22', '#1abc9c'];
                         const color = cosmicColors[idx % cosmicColors.length];
+                        
+                        // 🟢 التعديل الخامس: ديناميكية الكثافة لتخفيف الازدحام البصري
+                        const occurrencesCount = star.occurrences.length;
+                        const markerSize = occurrencesCount > 100 ? 3 : (occurrencesCount > 40 ? 5 : 9);
+                        const lineWidth = occurrencesCount > 100 ? 1 : 2;
+                        const lineOpacity = occurrencesCount > 100 ? 0.6 : 1;
+
                         return {
                           x: star.occurrences.map((_, i) => i + 1),
                           y: star.occurrences.map(o => o.globalPos),
                           name: star.word, 
-                          text: star.occurrences.map((o, i) => `الكلمة: ${star.word}<br>الظهور: ${i+1}<br>سورة ${o.surahName}<br>آية ${o.ayahNum}<br>الموقع المطلق: ${o.globalPos}`),
+                          text: star.occurrences.map((o, i) => `الكلمة الأصلية: ${o.actualWordFound || star.word}<br>الظهور: ${i+1}<br>سورة ${o.surahName}<br>آية ${o.ayahNum}<br>الموقع المطلق: ${o.globalPos}`),
                           hoverinfo: 'text+name',
                           mode: 'markers+lines',
                           type: 'scatter',
-                          marker: { size: 9, color: color, opacity: 0.9, line: { color: '#fff', width: 1 } },
-                          line: { color: color, width: 2, shape: 'spline' }
+                          marker: { size: markerSize, color: color, opacity: 0.9, line: { color: '#fff', width: occurrencesCount > 100 ? 0 : 1 } },
+                          line: { color: color, width: lineWidth, shape: 'spline' },
+                          opacity: lineOpacity
                         };
                       })}
                       layout={{
@@ -2666,29 +2991,71 @@ const renderInteractiveAyah = (ayah, shapeCounters, extractedWordsData = []) => 
                                 </div>
                              </div>
 
-                             {/* الجدول الواسع المريح للعين */}
-                             <div style={{ background: '#fff', borderRadius: '8px', padding: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
+{/* الجدول الواسع المريح للعين */}
+<div className="tracker-table-for-export" style={{ background: '#fff', borderRadius: '8px', padding: '20px', boxShadow: '0 4px 10px rgba(0,0,0,0.03)' }}>
                                 <h4 style={{ margin: '0 0 15px 0', color: '#2c3e50', borderBottom: '2px solid #ecf0f1', paddingBottom: '10px' }}>إحداثيات المواقع والمسافات البينية</h4>
                                 <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
+<table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
                                       <thead style={{ position: 'sticky', top: 0, background: '#34495e', color: '#fff', zIndex: 1 }}>
                                          <tr>
                                            <th style={{ padding: '12px' }}>الرقم</th>
+                                           <th style={{ padding: '12px' }}>الكلمة الفعلية في النص</th>
                                            <th style={{ padding: '12px' }}>السورة</th>
                                            <th style={{ padding: '12px' }}>الآية</th>
                                            <th style={{ padding: '12px' }}>الموقع المطلق</th>
-                                           <th style={{ padding: '12px' }}>المسافة عن الظهور السابق</th>
+                                           <th style={{ padding: '12px' }}>المسافة</th>
+                                           <th style={{ padding: '12px' }}>إجراء التنقية</th>
                                          </tr>
                                       </thead>
                                       <tbody>
                                          {star.occurrences.map((occ, oIdx) => (
                                             <tr key={oIdx} style={{ borderBottom: '1px solid #eee', background: oIdx % 2 === 0 ? '#fdfdfd' : '#f9f9f9', transition: '0.2s' }} onMouseEnter={(e) => e.currentTarget.style.background = '#f1f8ff'} onMouseLeave={(e) => e.currentTarget.style.background = oIdx % 2 === 0 ? '#fdfdfd' : '#f9f9f9'}>
                                                <td style={{ padding: '10px', fontWeight: 'bold' }}>{oIdx + 1}</td>
+                                               
+                                               {/* 🟢 عرض الرسم الفعلي للكلمة كما وردت في المصحف */}
+                                               <td style={{ padding: '10px', fontFamily: '"Amiri Quran", serif', fontSize: '22px', color: '#8e44ad', fontWeight: 'bold' }}>
+                                                  {occ.actualWordFound || star.word}
+                                               </td>
+                                               
                                                <td style={{ padding: '10px', color: '#2980b9' }}>{occ.surahName}</td>
                                                <td style={{ padding: '10px' }}>{occ.ayahNum}</td>
                                                <td style={{ padding: '10px', fontWeight: 'bold', color: '#c0392b' }}>{occ.globalPos}</td>
                                                <td style={{ padding: '10px', color: '#27ae60', fontWeight: 'bold' }}>
-                                                  {oIdx === 0 ? '---' : `+ ${star.distances[oIdx - 1]} كلمة`}
+                                                  {oIdx === 0 ? '---' : `+ ${star.distances[oIdx - 1]}`}
+                                               </td>
+                                               
+                                               {/* 🟢 زر الاستبعاد الديناميكي الذي يعيد بناء حسابات النجم بالكامل */}
+                                               <td style={{ padding: '10px' }}>
+                                                  <button className="exclude-btn-for-export" onClick={() => { 
+                                                      setTrackedStars(prev => {
+                                                          const newStars = [...prev];
+                                                          const currentStar = { ...newStars[idx] };
+                                                          
+                                                          // حذف العنصر من المصفوفة
+                                                          const newOccurrences = [...currentStar.occurrences];
+                                                          newOccurrences.splice(oIdx, 1);
+                                                          
+                                                          // إعادة المزامنة الحية لجميع الحسابات
+                                                          currentStar.occurrences = newOccurrences;
+                                                          currentStar.count = newOccurrences.length;
+                                                          currentStar.sumOfPositions = newOccurrences.reduce((sum, o) => sum + o.globalPos, 0);
+                                                          currentStar.firstAppearance = newOccurrences.length > 0 ? newOccurrences[0].globalPos : null;
+                                                          currentStar.specialProduct = currentStar.firstAppearance ? (currentStar.firstAppearance * currentStar.valSpatial) : 0;
+                                                          
+                                                          // إعادة حساب المسافات البينية بعد الحذف
+                                                          let newDistances = [];
+                                                          for (let i = 1; i < newOccurrences.length; i++) {
+                                                              newDistances.push(newOccurrences[i].globalPos - newOccurrences[i-1].globalPos);
+                                                          }
+                                                          currentStar.distances = newDistances;
+                                                          
+                                                          newStars[idx] = currentStar;
+                                                          return newStars;
+                                                      });
+                                                  }} style={{ background: '#e74c3c', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px', transition: '0.2s', boxShadow: '0 2px 4px rgba(231,76,60,0.3)' }} onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'} onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}>
+                                                      استبعاد ❌
+                                                      
+                                                  </button>
                                                </td>
                                             </tr>
                                          ))}
