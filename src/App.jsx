@@ -2582,9 +2582,11 @@ return (
 {/* 🟢 لوحة العائلات (ثابتة 28% + تصميم النيومورفيزم للأزرار + منع التفاف النص) */}
              <div style={{ flex: '0 0 28%', minWidth: '220px', background: '#eef2f5', border: 'none', borderRadius: '15px', padding: '18px 12px', marginBottom: '20px', boxShadow: '4px 4px 10px rgba(163,177,198,0.3), -4px -4px 10px rgba(255,255,255, 0.8)' }}>
                 
-                {/* 🟢 العنوان والإجمالي (في سطر واحد إجباري بدون التفاف) */}
+{/* 🟢 العنوان والإجمالي (عنوان ديناميكي يتغير حسب النطاق) */}
                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '20px' }}>
-                  <h3 style={{ margin: '0', fontSize: '15px', color: '#2c3e50', whiteSpace: 'nowrap', fontWeight: 'bold' }}>عائلات الحروف</h3>
+                  <h3 style={{ margin: '0', fontSize: '15px', color: '#2c3e50', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+                    {viewScope === 'global' ? 'عائلات المصحف كاملاً 📖' : `عائلات (سورة ${currentSurah?.name || ''}) 📄`}
+                  </h3>
                   
                   {/* شارة الإجمالي (غائرة للداخل) */}
                   <span style={{ background: '#eef2f5', color: '#d35400', padding: '4px 8px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold', whiteSpace: 'nowrap', boxShadow: 'inset 2px 2px 5px rgba(163,177,198,0.5), inset -2px -2px 5px rgba(255,255,255, 0.9)' }}>
