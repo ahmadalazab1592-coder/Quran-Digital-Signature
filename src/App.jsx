@@ -3161,7 +3161,7 @@ return (
                     <p style={{ margin: 0, fontWeight: 'bold', color: '#34495e' }}>
                        النسخة المعتمدة في هذا التطبيق للتحليل الإحصائي والمطابقة هي:
                        <br/>
-                       <span style={{ color: '#27ae60', fontSize: '19px', fontFamily: '"Amiri Quran", serif' }}>مصحف المدينة المنورة، رواية حفص عن عاصم .. تم تحميلها من موقع تنزيل .  (طبعة مجمع الملك فهد ).</span>
+                       <span style={{ color: '#27ae60', fontSize: '19px', fontFamily: '"Amiri Quran", serif' }}>مصحف المدينة المنورة، رواية حفص عن عاصم .. تم إعتماد نسخة موقع تنزيل .  (طبعة مجمع الملك فهد ).</span>
                     </p>
                  </div>
                  
