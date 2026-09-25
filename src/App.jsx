@@ -1711,7 +1711,7 @@ return (
              setInteractionMode(prev => prev === 'explore' ? 'analyze' : 'explore');
              setSelectedAnalysisWords([]);
           }} style={{ flexShrink: 0, fontFamily: 'inherit', padding: '6px 10px', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', transition: 'all 0.3s', backgroundColor: '#eef2f5', color: interactionMode === 'analyze' ? '#e67e22' : '#2c3e50', boxShadow: interactionMode === 'analyze' ? 'inset 2px 2px 5px rgba(163,177,198,0.5), inset -2px -2px 5px rgba(255,255,255, 0.9)' : '2px 2px 5px rgba(163,177,198,0.5), -2px -2px 5px rgba(255,255,255, 0.9)', whiteSpace: 'nowrap', marginRight: 'auto' }}>
-             {interactionMode === 'analyze' ? 'إلغاء وضع التحليل ❌' : 'التحليل العددي المباشر 🧮'}
+             {interactionMode === 'analyze' ? 'إلغاء وضع التحليل ❌' : 'التحليل العددي و مرصد النجوم 🧮'}
           </button>
 
         </div>
@@ -3111,7 +3111,7 @@ return (
 
                     {/* 2. النظام والبصمة */}
                     <div style={{ background: '#fff', padding: '20px', borderRadius: '8px', borderRight: '4px solid #2980b9', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-                       <h4 style={{ margin: '0 0 10px 0', color: '#2980b9', fontSize: '18px' }}>🧬 نظام البصمة وثلاثية المعايير الزمكانية</h4>
+                       <h4 style={{ margin: '0 0 10px 0', color: '#2980b9', fontSize: '18px' }}>🧬 نظام البصمة وثلاثية المعايير الرقمية</h4>
 <p style={{ margin: 0 }}>
                           يأخذ كل حرف قيمته العددية وكأنها انعكاس رقمي فريد لهيئته الفريدة، وذلك وفق ثلاثة معايير دقيقة:
                           <br/>1. <b>ترتيب ظهوره المتسلسل:</b> (الرتبة الزمنية للاكتشاف).
@@ -3159,7 +3159,7 @@ return (
                     <p style={{ margin: 0, fontWeight: 'bold', color: '#34495e' }}>
                        النسخة المعتمدة في هذا التطبيق للتحليل الإحصائي والمطابقة هي:
                        <br/>
-                       <span style={{ color: '#27ae60', fontSize: '19px', fontFamily: '"Amiri Quran", serif' }}>مصحف المدينة المنورة، رواية حفص عن عاصم (طبعة مجمع الملك فهد ).</span>
+                       <span style={{ color: '#27ae60', fontSize: '19px', fontFamily: '"Amiri Quran", serif' }}>مصحف المدينة المنورة، رواية حفص عن عاصم .. تم تحميلها من موقع تنزيل .  (طبعة مجمع الملك فهد ).</span>
                     </p>
                  </div>
                  
@@ -3172,7 +3172,7 @@ return (
                        أحمد طلعت
                     </div>
                     <div style={{ fontSize: '15px', color: '#34495e', fontFamily: 'monospace', background: '#ecf0f1', display: 'inline-block', padding: '6px 20px', borderRadius: '25px', border: '1px solid #dcdde1' }}>
-                       ahmadalazab2022@gmail.com
+                       ahmadalazab1592@gmail.com
                     </div>
                  </div>
 
