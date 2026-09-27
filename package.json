@@ -18,7 +18,8 @@
     "plotly.js": "^4.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-plotly.js": "^4.1.0"
+    "react-plotly.js": "^4.1.0",
+    "vite-plugin-pwa": "^1.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
