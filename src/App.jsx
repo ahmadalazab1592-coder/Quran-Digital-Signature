@@ -8,6 +8,7 @@ import { Analytics } from '@vercel/analytics/react';
 import './App.css';
 import { quranData as tanzilData } from './db/QuranTanzilDB.js';
 import html2canvas from 'html2canvas';
+import emailjs from '@emailjs/browser';
 
 const nonConnectingLeftChars = ['ا', 'أ', 'إ', 'آ', 'ٱ', 'د', 'ذ', 'ر', 'ز', 'و', 'ؤ', 'ة', 'ء'];
 
@@ -76,6 +77,50 @@ function MainApp() {
   const [verifyResult, setVerifyResult] = useState(null);
   const [verifyNumBase, setVerifyNumBase] = useState('spatial');
   const [verifyMode, setVerifyMode] = useState('strict'); // 🟢 السطر الجديد: لتحديد مستوى الصرامة
+
+  // 🟢 متغيرات اللغز الخفي (Easter Egg)
+  const [showEasterEgg, setShowEasterEgg] = useState(false);
+  const [secretCode, setSecretCode] = useState('');
+  const [easterEggStatus, setEasterEggStatus] = useState(null);
+  
+// 🟢 محرك فحص اللغز وإرسال الإشعارات الصامتة عبر EmailJS
+  const handleSecretSubmit = async () => {
+      const correctCode = "0591151592"; // ضع الرقم السري الحقيقي هنا
+      
+      // جمع بيانات الجهاز الأساسية للمستخدم
+      const attemptData = {
+          codeTried: secretCode,
+          timestamp: new Date().toLocaleString('ar-EG'),
+          userAgent: navigator.userAgent,
+          language: navigator.language,
+          status: secretCode === correctCode ? "✅ نجاح" : "❌ فشل"
+      };
+
+      // 🔴 مفاتيح الربط الخاصة بك من موقع EmailJS
+      const serviceID = 'service_2vwkm7u'; // استبدل هذا
+      const templateID = 'template_mmae3i8'; // استبدل هذا
+      const publicKey = 'H2BL3KiMCQFTYLZXY'; // استبدل هذا
+
+      if (secretCode === correctCode) {
+          setEasterEggStatus('success');
+          
+          // إرسال الإشعار بصمت في الخلفية (محاولة ناجحة)
+          emailjs.send(serviceID, templateID, attemptData, publicKey)
+             .then(() => console.log('تم إرسال إشعار النجاح بصمت'))
+             .catch((err) => console.error('خطأ في إرسال الإشعار:', err));
+             
+      } else {
+          setEasterEggStatus('error');
+          
+          // إرسال الإشعار بصمت في الخلفية (محاولة فاشلة / تخمين)
+          emailjs.send(serviceID, templateID, attemptData, publicKey)
+             .then(() => console.log('تم إرسال إشعار التخمين بصمت'))
+             .catch((err) => console.error('خطأ في إرسال الإشعار:', err));
+             
+          // إخفاء رسالة الخطأ بعد 3 ثوانٍ
+          setTimeout(() => setEasterEggStatus(null), 3000);
+      }
+  };
 
   // 🟢 إعدادات معمل البصمة الزمكانية
 const [labSettings, setLabSettings] = useState({
@@ -3165,7 +3210,7 @@ return (
                     </p>
                  </div>
                  
-                 {/* 🟢 تذييل الحقوق والفكرة */}
+{/* 🟢 تذييل الحقوق واللغز الخفي */}
                  <div style={{ textAlign: 'center', marginTop: '35px', paddingTop: '25px', borderTop: '2px dashed #bdc3c7' }}>
                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7f8c8d', marginBottom: '5px' }}>
                        فكرة، إعداد، وبناء
@@ -3173,9 +3218,100 @@ return (
                     <div style={{ fontSize: '26px', fontWeight: '900', color: '#2980b9', fontFamily: '"Amiri Quran", serif', marginBottom: '10px' }}>
                        أحمد طلعت
                     </div>
-                    <div style={{ fontSize: '15px', color: '#34495e', fontFamily: 'monospace', background: '#ecf0f1', display: 'inline-block', padding: '6px 20px', borderRadius: '25px', border: '1px solid #dcdde1' }}>
-                       ahmadalazab1592@gmail.com
+                    <div 
+                       onClick={() => {
+                           const willShow = !showEasterEgg;
+                           setShowEasterEgg(willShow);
+                           
+                           if (willShow) {
+                               // التمرير التلقائي السلس للنافذة بمجرد فتحها
+                               setTimeout(() => {
+                                   const eggBox = document.getElementById('easter-egg-box');
+                                   if (eggBox) {
+                                       eggBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                   }
+                               }, 100);
+
+                               // مؤقت ذكي لإغلاق النافذة تلقائياً بعد دقيقة (60,000 ملي ثانية)
+                               // نقوم بحفظ رقم المؤقت (Timeout ID) في عنصر النافذة لإلغائه إذا تم إغلاقها يدوياً
+                               const timerId = setTimeout(() => {
+                                   setShowEasterEgg(false);
+                                   setSecretCode('');
+                                   setEasterEggStatus(null);
+                               }, 60000);
+                               // حفظ الـ timerId في متغير عام للنافذة (trick بسيط)
+                               window.easterEggTimer = timerId;
+                           } else {
+                               // إذا قام المستخدم بإغلاق النافذة، نلغي المؤقت
+                               if(window.easterEggTimer) clearTimeout(window.easterEggTimer);
+                           }
+                       }}
+                       style={{ fontSize: '15px', color: '#34495e', fontFamily: 'monospace', background: '#ecf0f1', display: 'inline-block', padding: '6px 20px', borderRadius: '25px', border: '1px solid #dcdde1', cursor: 'pointer', transition: '0.3s' }}
+                       onMouseEnter={(e) => e.target.style.background = '#e2e6e8'}
+                       onMouseLeave={(e) => e.target.style.background = '#ecf0f1'}
+                       title="انقر هنا للتواصل..."
+                    >
+                       ahmadalazab2022@gmail.com
                     </div>
+
+                    {/* 🟢 صندوق اللغز الخفي */}
+                    {showEasterEgg && (
+                        <div 
+                           id="easter-egg-box" // معرّف (ID) للتمرير التلقائي
+                           style={{ position: 'relative', marginTop: '20px', padding: '15px 25px 20px', background: '#fdf2e9', border: '1px dashed #e67e22', borderRadius: '8px', animation: 'fadeIn 0.5s', textAlign: 'center', maxWidth: '400px', margin: '20px auto 0 auto', boxShadow: '0 4px 15px rgba(230, 126, 34, 0.15)' }}
+                        >
+                            {/* زر الإغلاق اليدوي (✖) */}
+                            <button 
+                                onClick={() => {
+                                    setShowEasterEgg(false);
+                                    setSecretCode('');
+                                    setEasterEggStatus(null);
+                                    if(window.easterEggTimer) clearTimeout(window.easterEggTimer);
+                                }}
+                                title="إغلاق النافذة"
+                                style={{ position: 'absolute', top: '8px', right: '8px', background: 'transparent', border: 'none', fontSize: '16px', color: '#7f8c8d', cursor: 'pointer', padding: '5px', lineHeight: 1 }}
+                                onMouseEnter={(e) => e.target.style.color = '#c0392b'}
+                                onMouseLeave={(e) => e.target.style.color = '#7f8c8d'}
+                            >
+                                ✖
+                            </button>
+
+                            <p style={{ margin: '10px 0 15px 0', fontSize: '14px', color: '#d35400', fontWeight: 'bold', lineHeight: '1.6' }}>
+                                يسعدني تواصلك عبر البريد.. أو إن كنت تملك "المفتاح الخاص"، فأدخله هنا لفك شفرة الرسالة التي تنتظرك:
+                            </p>
+                            
+                            {easterEggStatus === 'success' ? (
+                                <div style={{ padding: '15px', background: '#e8f8f5', color: '#27ae60', borderRadius: '6px', border: '1px solid #2ecc71', fontWeight: 'bold' }}>
+                                    🎉 أحسنت! لقد فتحت الصندوق الخفي.<br/>
+                                    <a href="https://youtu.be/IMCfmy8T9ro?si=l2Dil5IH8t4zToQg" target="_blank" rel="noreferrer" style={{ color: '#2980b9', textDecoration: 'underline', marginTop: '10px', display: 'inline-block', fontSize: '16px' }}>
+                                        🎧 اضغط هنا للاستماع للرسالة الصوتية
+                                    </a>
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'stretch' }}>
+                                    <input 
+                                        type="password" 
+                                        placeholder="أدخل المفتاح السري..." 
+                                        value={secretCode}
+                                        onChange={(e) => setSecretCode(e.target.value)}
+                                        style={{ padding: '10px 12px', borderRadius: '4px', border: '1px solid #ccc', outline: 'none', textAlign: 'center', width: '160px', fontFamily: 'monospace', fontSize: '15px' }}
+                                    />
+                                    <button 
+                                        onClick={handleSecretSubmit}
+                                        style={{ padding: '0 20px', background: '#e67e22', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px', display: 'flex', alignItems: 'center' }}
+                                    >
+                                        فتح 🔓
+                                    </button>
+                                </div>
+                            )}
+                            
+                            {easterEggStatus === 'error' && (
+                                <div style={{ color: '#c0392b', fontSize: '13px', marginTop: '12px', fontWeight: 'bold' }}>
+                                    ❌ المفتاح غير صحيح، أعد المحاولة.
+                                </div>
+                            )}
+                        </div>
+                    )}
                  </div>
 
               </div>
