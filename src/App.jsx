@@ -3251,7 +3251,7 @@ return (
                        onMouseLeave={(e) => e.target.style.background = '#ecf0f1'}
                        title="انقر هنا للتواصل..."
                     >
-                       ahmadalazab2022@gmail.com
+                       ahmadalazab1592@gmail.com
                     </div>
 
                     {/* 🟢 صندوق اللغز الخفي */}
