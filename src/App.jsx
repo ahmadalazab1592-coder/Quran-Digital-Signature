@@ -3168,7 +3168,7 @@ return (
                  {/* 🟢 تذييل الحقوق والفكرة */}
                  <div style={{ textAlign: 'center', marginTop: '35px', paddingTop: '25px', borderTop: '2px dashed #bdc3c7' }}>
                     <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#7f8c8d', marginBottom: '5px' }}>
-                       فكرة، إعداد، وبناء
+                       فكرة، وإعداد، وبناء
                     </div>
                     <div style={{ fontSize: '26px', fontWeight: '900', color: '#2980b9', fontFamily: '"Amiri Quran", serif', marginBottom: '10px' }}>
                        أحمد طلعت
